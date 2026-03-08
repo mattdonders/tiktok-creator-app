@@ -37,6 +37,11 @@ MAX_WAIT      = 1800
 VIDEOS = [
     {
         "title": "creatorpost_video_2_burnout",
+        "caption": (
+            "The part of content creation nobody talks about 👇\n\n"
+            "It's not the filming. It's everything after.\n\n"
+            "#burnout #contentcreator #creatortips #tiktokgrowth #socialmedia"
+        ),
         "narration": (
             "Nobody talks about this — but a huge reason creators burn out isn't the filming. "
             "It's everything after.  "
@@ -50,6 +55,11 @@ VIDEOS = [
     },
     {
         "title": "creatorpost_video_1_automated",
+        "caption": (
+            "I automated my entire TikTok upload process and saved hours every week ⚡\n\n"
+            "If you're posting consistently, manual uploads are killing your time.\n\n"
+            "#contentcreator #tiktokautomation #creatortips #contentcreation #socialmediatools"
+        ),
         "narration": (
             "I used to spend way too much time manually uploading videos to TikTok.  "
             "Like — I'd film a batch of content, edit everything, and then have to sit there "
@@ -64,6 +74,12 @@ VIDEOS = [
     },
     {
         "title": "creatorpost_video_3_daily",
+        "caption": (
+            "How I post daily on TikTok without touching my phone 📱✨\n\n"
+            "Film once. Schedule everything. Post on autopilot.\n\n"
+            "This is the only way I've stayed consistent for months.\n\n"
+            "#tiktokgrowth #contentcreator #socialmediatips #creatortips #consistency"
+        ),
         "narration": (
             "I post on TikTok every single day — and I'm barely on my phone.  "
             "Here's how: I film a week's worth of content in one session. "
@@ -166,17 +182,9 @@ def cmd_generate(args):
     # Resolve voice
     voice_id = args.voice_id
     if not voice_id:
-        print("Looking up default voice for avatar...")
-        avatars = list_avatars()
-        avatar = next((a for a in avatars if a["avatar_id"] == args.avatar_id), None)
-        if not avatar:
-            print(f"Avatar {args.avatar_id} not found.", file=sys.stderr)
-            sys.exit(1)
-        voice_id = avatar.get("default_voice_id")
-        if not voice_id:
-            print("No default voice found. Pass --voice-id explicitly.", file=sys.stderr)
-            sys.exit(1)
-        print(f"Using voice: {voice_id}")
+        # Default to a natural English male voice
+        voice_id = "en-US-ChristopherNeural"
+        print(f"Using default voice: {voice_id}")
 
     videos = VIDEOS if args.video == "all" else [VIDEOS[int(args.video) - 1]]
 
@@ -186,6 +194,10 @@ def cmd_generate(args):
         status   = poll_status(video_id)
         out_path = OUTPUT_DIR / f"{video['title']}.mp4"
         download_video(status["video_url"], out_path)
+        # Save companion caption file
+        caption_path = OUTPUT_DIR / f"{video['title']}.txt"
+        caption_path.write_text(video["caption"])
+        print(f"  Caption : {caption_path}")
         print(f"  Duration: {status.get('duration', '?')}s")
 
     print("\nAll done!")

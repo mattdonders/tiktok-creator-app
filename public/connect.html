@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect TikTok — CreatorPost</title>
+  <meta name="description" content="Connect your TikTok account to CreatorPost to start publishing videos automatically." />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <style>
+    .connect-page {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+      text-align: center;
+    }
+    .connect-logo {
+      width: 72px;
+      height: 72px;
+      border-radius: 18px;
+      margin: 0 auto 2rem;
+      display: block;
+    }
+    .connect-page h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.75rem;
+    }
+    .connect-page p {
+      color: var(--muted);
+      margin-bottom: 2.5rem;
+      line-height: 1.7;
+    }
+    .connect-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .connect-card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .connect-card p {
+      font-size: 0.875rem;
+      margin-bottom: 1.5rem;
+    }
+    .tiktok-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #fff;
+      color: #000;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: var(--radius);
+      text-decoration: none;
+      transition: opacity 0.15s, transform 0.15s;
+      width: 100%;
+      justify-content: center;
+    }
+    .tiktok-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+      text-decoration: none;
+    }
+    .tiktok-icon {
+      width: 22px;
+      height: 22px;
+    }
+    .perms-list {
+      list-style: none;
+      padding: 0;
+      margin: 1.5rem 0 0;
+      text-align: left;
+    }
+    .perms-list li {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .perms-list li:last-child { border-bottom: none; }
+    .perm-check { color: #4ade80; font-size: 0.9rem; }
+    .fine-print {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="logo">
+      <img src="/logo.png" alt="CreatorPost" class="logo-img" />
+      Creator<span>Post</span>
+    </a>
+    <ul>
+      <li><a href="/#features">Features</a></li>
+      <li><a href="/#how-it-works">How it works</a></li>
+    </ul>
+    <a href="/connect.html" class="btn btn-primary">Connect TikTok</a>
+  </nav>
+
+  <div class="connect-page">
+    <img src="/logo.png" alt="CreatorPost" class="connect-logo" />
+    <h1>Connect your TikTok account</h1>
+    <p>Authorize CreatorPost to publish videos to your TikTok profile automatically using TikTok's official Content Posting API.</p>
+
+    <div class="connect-card">
+      <h2>What CreatorPost needs access to</h2>
+      <ul class="perms-list">
+        <li><span class="perm-check">✓</span> Read your basic profile info (name &amp; avatar)</li>
+        <li><span class="perm-check">✓</span> Upload video content to your account</li>
+        <li><span class="perm-check">✓</span> Publish videos directly to your TikTok profile</li>
+      </ul>
+
+      <br>
+      <a href="/auth" class="tiktok-btn">
+        <svg class="tiktok-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.25 8.25 0 004.83 1.56V6.79a4.85 4.85 0 01-1.06-.1z"/>
+        </svg>
+        Continue with TikTok
+      </a>
+
+      <p class="fine-print">
+        You'll be redirected to TikTok to authorize. You can revoke access at any time from your TikTok settings.
+      </p>
+    </div>
+
+    <p class="fine-print">
+      By connecting, you agree to our
+      <a href="/terms.html">Terms of Service</a> and
+      <a href="/privacy.html">Privacy Policy</a>.
+    </p>
+  </div>
+
+  <footer>
+    <a href="/" class="logo"><img src="/logo.png" alt="CreatorPost" class="logo-img" />Creator<span>Post</span></a>
+    <div class="footer-links">
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Service</a>
+      <a href="mailto:matt@mattdonders.com">Contact</a>
+    </div>
+    <span>&copy; 2025 CreatorPost. All rights reserved.</span>
+  </footer>
+
+</body>
+</html>
