@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CreatorPost — Schedule & Publish TikTok Videos Automatically</title>
+  <meta name="description" content="CreatorPost helps content creators schedule and automatically publish videos to TikTok. Save time, stay consistent, grow faster." />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <span class="logo">Creator<span>Post</span></span>
+    <ul>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="/privacy.html">Privacy</a></li>
+    </ul>
+    <a href="#waitlist" class="btn btn-primary">Get Early Access</a>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="badge">TikTok Content Automation</div>
+    <h1>Publish your TikTok videos <span class="gradient">automatically</span></h1>
+    <p>CreatorPost lets you schedule and auto-publish videos directly to TikTok — no manual uploads, no interruptions. Built for creators who want to stay consistent without staying glued to their phone.</p>
+    <div class="hero-cta">
+      <a href="#waitlist" class="btn btn-primary">Join the Waitlist</a>
+      <a href="#how-it-works" class="btn btn-outline">See how it works</a>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <p class="section-label">Features</p>
+    <h2 class="section-title">Everything you need to post consistently</h2>
+    <p class="section-sub">Stop letting posting friction slow down your growth. CreatorPost handles the publishing so you can focus on creating.</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Auto-Publish</h3>
+        <p>Connect your TikTok account once and let CreatorPost publish your videos automatically — no app required at upload time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗓</div>
+        <h3>Smart Scheduling</h3>
+        <p>Queue up your content in advance and schedule posts for peak engagement times. Your calendar, your cadence.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <h3>Multi-Account Support</h3>
+        <p>Manage multiple TikTok accounts from a single dashboard. Perfect for agencies and creators with multiple channels.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Post Tracking</h3>
+        <p>See a full history of what was published, when, and to which account. Keep your content pipeline organized.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure by Default</h3>
+        <p>Your tokens are encrypted and never shared. We only request the minimum permissions needed to post on your behalf.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔗</div>
+        <h3>API-First</h3>
+        <p>Pipe videos from any workflow — local folders, cloud storage, custom scripts. CreatorPost is the last step in your pipeline.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="how-it-works" id="how-it-works">
+    <p class="section-label">How it works</p>
+    <h2 class="section-title" style="text-align:center;letter-spacing:-0.03em;font-size:clamp(1.6rem,4vw,2.25rem);font-weight:700;margin-bottom:0.75rem;">Up and running in minutes</h2>
+    <p class="section-sub" style="text-align:center;color:var(--muted);max-width:480px;margin:0 auto 3rem;">No complicated setup. Connect your account, configure your schedule, and let CreatorPost take it from there.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h3>Connect your TikTok account</h3>
+          <p>Authorize CreatorPost with your TikTok credentials through TikTok's official OAuth flow. We only request video posting permissions.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h3>Add your videos</h3>
+          <p>Upload directly in the dashboard or point CreatorPost at a folder or API source. Add captions, hashtags, and a scheduled time.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h3>Set it and forget it</h3>
+          <p>CreatorPost publishes your video at the scheduled time using TikTok's official Content Posting API — no browser, no app, no manual upload.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h3>Track your posts</h3>
+          <p>Every published video is logged with a timestamp and status. Stay on top of your content calendar at a glance.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA / Waitlist -->
+  <section class="cta-section" id="waitlist">
+    <h2>Ready to automate your TikTok?</h2>
+    <p>Join the waitlist and be the first to know when CreatorPost opens for new accounts.</p>
+    <form class="waitlist-form" onsubmit="handleWaitlist(event)">
+      <input type="email" placeholder="you@example.com" required />
+      <button type="submit" class="btn btn-primary">Join Waitlist</button>
+    </form>
+    <p class="success-msg" id="success-msg">You're on the list! We'll be in touch soon.</p>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <span class="logo">Creator<span>Post</span></span>
+    <div class="footer-links">
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Service</a>
+      <a href="mailto:matt@mattdonders.com">Contact</a>
+    </div>
+    <span>&copy; 2025 CreatorPost. All rights reserved.</span>
+  </footer>
+
+  <script>
+    function handleWaitlist(e) {
+      e.preventDefault();
+      const form = e.target;
+      const msg = document.getElementById('success-msg');
+      form.style.display = 'none';
+      msg.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
