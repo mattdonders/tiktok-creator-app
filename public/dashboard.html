@@ -659,7 +659,12 @@
           return;
         }
 
-        showStatus(scheduled ? "Video scheduled successfully! ✓" : "Video submitted to TikTok! ✓", "success");
+        const successMsg = scheduled
+          ? "Video scheduled successfully! ✓ It will post at the time you selected."
+          : data.inbox
+            ? "Video uploaded! ✓ Check your Drafts in the TikTok app to review and publish."
+            : "Video posted to TikTok! ✓ It may take a few minutes to appear on your profile."
+        showStatus(successMsg, "success");
 
         // Save to local post history
         const post = {
