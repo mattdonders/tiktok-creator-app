@@ -530,10 +530,36 @@
     }
 
     function setDefaultScheduleTime() {
-      const dt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-      const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
+      const input  = document.getElementById("schedule-time");
+      const now    = Date.now();
+      const min    = new Date(now + 16 * 60 * 1000);       // 16 min from now (buffer)
+      const max    = new Date(now + 10 * 24 * 60 * 60 * 1000); // 10 days from now
+      const def    = new Date(now + 60 * 60 * 1000);        // default: 1 hour from now
+
+      const toLocal = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000)
         .toISOString().slice(0, 16);
-      document.getElementById("schedule-time").value = local;
+
+      input.min   = toLocal(min);
+      input.max   = toLocal(max);
+      input.value = toLocal(def);
+    }
+
+    function validateScheduleTime() {
+      const input   = document.getElementById("schedule-time");
+      const selected = new Date(input.value).getTime();
+      const now      = Date.now();
+      const minMs    = 15 * 60 * 1000;
+      const maxMs    = 10 * 24 * 60 * 60 * 1000;
+
+      if (selected - now < minMs) {
+        showStatus("Scheduled time must be at least 15 minutes from now.", "error");
+        return false;
+      }
+      if (selected - now > maxMs) {
+        showStatus("Scheduled time must be within 10 days from now.", "error");
+        return false;
+      }
+      return true;
     }
 
     // ── Submit ─────────────────────────────────────────────────────────────────
@@ -551,6 +577,8 @@
         showStatus("Please select a video file.", "error");
         return;
       }
+
+      if (scheduled && !validateScheduleTime()) return;
 
       btn.disabled    = true;
       btn.textContent = "Uploading…";
