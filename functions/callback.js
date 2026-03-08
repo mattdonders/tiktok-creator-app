@@ -45,12 +45,16 @@ export async function onRequestGet({ request, env }) {
   const { access_token, refresh_token, open_id, expires_in } = tokenData;
   const maxAge = expires_in ?? 86400;
 
-  const headers = new Headers({ "Location": "/dashboard" });
+  const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
   headers.append("Set-Cookie", `cp_token=${access_token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/`);
   headers.append("Set-Cookie", `cp_open_id=${open_id}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/`);
   headers.append("Set-Cookie", `cp_refresh=${refresh_token ?? ""}; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000; Path=/`);
 
-  return new Response(null, { status: 302, headers });
+  return new Response(
+    `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/dashboard" /></head>
+     <body><script>window.location.replace('/dashboard');</script></body></html>`,
+    { status: 200, headers }
+  );
 }
 
 // ── TikTok token exchange ──────────────────────────────────────────────────

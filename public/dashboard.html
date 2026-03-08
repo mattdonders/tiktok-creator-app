@@ -462,22 +462,30 @@
 
     async function loadProfile() {
       try {
-        const res = await fetch("/api/me");
-        if (res.status === 401) {
+        const res  = await fetch("/api/me");
+        const data = await res.json();
+
+        // 401 with error=not_connected means no cookie at all — send to connect
+        if (res.status === 401 && data.error === "not_connected") {
           window.location.href = "/connect.html";
           return;
         }
-        const user = await res.json();
-        if (user.display_name) {
-          document.getElementById("account-name").textContent = user.display_name;
-          document.getElementById("account-avatar").src = user.avatar_url ?? "";
-          document.getElementById("account-strip").style.display = "flex";
-          document.getElementById("nav-account").innerHTML =
-            `<img src="${user.avatar_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" />`+
-            `<span style="font-size:0.85rem;color:var(--muted)">${user.display_name}</span>`;
-        }
+
+        // Token exists but profile fetch failed (e.g. sandbox) — show fallback
+        const user = data;
+        const name = user.display_name ?? "TikTok Account";
+        const avatar = user.avatar_url ?? "";
+
+        document.getElementById("account-name").textContent = name;
+        if (avatar) document.getElementById("account-avatar").src = avatar;
+        document.getElementById("account-strip").style.display = "flex";
+        document.getElementById("nav-account").innerHTML =
+          (avatar ? `<img src="${avatar}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" />` : "") +
+          `<span style="font-size:0.85rem;color:var(--muted)">${name}</span>`;
       } catch {
-        // silently fail — still show the dashboard
+        // Network error — still show dashboard, don't redirect
+        document.getElementById("account-name").textContent = "TikTok Account";
+        document.getElementById("account-strip").style.display = "flex";
       }
     }
 
