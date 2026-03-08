@@ -247,7 +247,9 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 1.25rem;
+      min-width: 0;
     }
+    .upload-form-inner > * { min-width: 0; }
     @media (max-width: 680px) { .upload-form-inner { grid-template-columns: 1fr; } }
 
     /* ── Progress / status ── */
