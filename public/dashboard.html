@@ -510,9 +510,10 @@
 
         // Token exists but profile fetch failed (e.g. sandbox) — show fallback
         const user = data;
-        const name = user.display_name ?? (user.open_id ? `@${user.open_id.slice(0, 8)}…` : "TikTok Account");
+        const name = user.display_name ?? (user.open_id ? `Connected` : "TikTok Account");
         const avatar = user.avatar_url ?? "";
-        const initials = name.replace("@","").charAt(0).toUpperCase() || "T";
+        const firstLetter = (user.display_name ?? "").match(/[a-zA-Z]/)?.[0]?.toUpperCase() ?? "T";
+        const initials = firstLetter;
 
         document.getElementById("account-name").textContent = name;
         if (avatar) {
