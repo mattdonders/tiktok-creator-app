@@ -8,8 +8,9 @@
  *   - schedule_time: ISO string (optional — if present, schedules the post)
  */
 
-const TIKTOK_INIT_URL   = "https://open.tiktokapis.com/v2/post/publish/video/init/";
-const TIKTOK_STATUS_URL = "https://open.tiktokapis.com/v2/post/publish/status/fetch/";
+const TIKTOK_INIT_URL        = "https://open.tiktokapis.com/v2/post/publish/video/init/";
+const TIKTOK_INBOX_INIT_URL  = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
+const TIKTOK_STATUS_URL      = "https://open.tiktokapis.com/v2/post/publish/status/fetch/";
 const MAX_FILE_SIZE     = 50 * 1024 * 1024; // 50 MB
 
 export async function onRequestPost({ request }) {
@@ -41,40 +42,49 @@ export async function onRequestPost({ request }) {
   }
 
   // ── Step 1: Initialize upload ──────────────────────────────────────────────
+  const sourceInfo = {
+    source:            "FILE_UPLOAD",
+    video_size:        videoSize,
+    chunk_size:        videoSize,
+    total_chunk_count: 1,
+  };
+
   const postInfo = {
     title:                    caption,
-    privacy_level:            "SELF_ONLY", // safe default — TikTok may enforce this anyway
+    privacy_level:            "SELF_ONLY",
     disable_duet:             false,
     disable_comment:          false,
     disable_stitch:           false,
     video_cover_timestamp_ms: 1000,
   };
 
-  // Add scheduled publish time if provided (must be 15min–10days from now)
   if (scheduleTime) {
     const ts = Math.floor(new Date(scheduleTime).getTime() / 1000);
     postInfo.scheduled_publish_time = ts;
-    postInfo.privacy_level = "SELF_ONLY";
   }
 
-  const initRes = await fetch(TIKTOK_INIT_URL, {
+  // Try direct post first; fall back to inbox (draft) if account isn't eligible
+  let initRes = await fetch(TIKTOK_INIT_URL, {
     method:  "POST",
-    headers: {
-      Authorization:  `Bearer ${token}`,
-      "Content-Type": "application/json; charset=UTF-8",
-    },
-    body: JSON.stringify({
-      post_info:   postInfo,
-      source_info: {
-        source:            "FILE_UPLOAD",
-        video_size:        videoSize,
-        chunk_size:        videoSize,
-        total_chunk_count: 1,
-      },
-    }),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
   });
 
-  const initData = await initRes.json();
+  let initData = await initRes.json();
+  let usedInbox = false;
+
+  if (!initRes.ok || initData.error?.code !== "ok") {
+    console.error("Direct post failed, trying inbox:", JSON.stringify(initData));
+    // Fall back to inbox/draft — fewer account eligibility requirements
+    initRes = await fetch(TIKTOK_INBOX_INIT_URL, {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ source_info: sourceInfo }),
+    });
+    initData = await initRes.json();
+    usedInbox = true;
+  }
+
   if (!initRes.ok || initData.error?.code !== "ok") {
     console.error("TikTok init error:", JSON.stringify(initData));
     return Response.json(
@@ -102,7 +112,7 @@ export async function onRequestPost({ request }) {
     return Response.json({ error: "Video upload failed" }, { status: 500 });
   }
 
-  return Response.json({ publish_id, scheduled: !!scheduleTime });
+  return Response.json({ publish_id, scheduled: !!scheduleTime, inbox: usedInbox });
 }
 
 // ── GET /api/publish?publish_id=xxx — check status ────────────────────────────
