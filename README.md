@@ -6,13 +6,12 @@ A minimal web app for TikTok's Content Posting API approval.
 
 - **Frontend**: Plain HTML/CSS — no build step
 - **Hosting**: Cloudflare Pages (auto-deploy from GitHub)
-- **OAuth callback**: Cloudflare Worker (`worker/callback.js`)
+- **OAuth callback**: Cloudflare Pages Function (`functions/callback.js` → `/callback`)
 - **Domain**: `tiktok.mattdonders.com`
 
 ## Local preview
 
 ```bash
-# Serve the public/ dir with any static file server
 npx serve public
 # or
 python3 -m http.server 8080 --directory public
@@ -20,20 +19,16 @@ python3 -m http.server 8080 --directory public
 
 ## Deploy
 
-### Pages (static site)
+### One-time Cloudflare Pages setup
 1. Connect this repo to Cloudflare Pages
-2. Set **Build output directory** to `public`
+2. Set **Build output directory** to `public` (no build command needed)
 3. Add custom domain `tiktok.mattdonders.com`
+4. In **Settings → Environment variables**, add:
+   - `TIKTOK_CLIENT_ID`
+   - `TIKTOK_CLIENT_SECRET`
+   - `DISCORD_WEBHOOK_URL`
 
-### Worker (OAuth callback)
-```bash
-npx wrangler deploy
-
-# Set secrets after TikTok app is approved:
-npx wrangler secret put TIKTOK_CLIENT_ID
-npx wrangler secret put TIKTOK_CLIENT_SECRET
-npx wrangler secret put DISCORD_WEBHOOK_URL
-```
+After that, every push to `main` auto-deploys everything — static files and the `/callback` function.
 
 ## TikTok App Settings
 

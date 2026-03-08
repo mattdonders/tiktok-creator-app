@@ -1,62 +1,48 @@
 /**
- * CreatorPost — TikTok OAuth Callback Worker
+ * CreatorPost — TikTok OAuth Callback (Cloudflare Pages Function)
  *
- * Handles the TikTok OAuth redirect, exchanges the auth code for an access
- * token + refresh token, then forwards the credentials to a Discord webhook
- * for safe retrieval.
+ * Handles the TikTok OAuth redirect, exchanges the auth code for tokens,
+ * then forwards credentials to a Discord webhook for safe retrieval.
  *
- * Required secrets (set via `wrangler secret put`):
+ * Secrets — set in Cloudflare Pages dashboard (Settings → Environment variables):
  *   TIKTOK_CLIENT_ID
  *   TIKTOK_CLIENT_SECRET
  *   DISCORD_WEBHOOK_URL
- *
- * Required vars in wrangler.toml:
- *   REDIRECT_URI = "https://tiktok.mattdonders.com/callback"
  */
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
+export async function onRequestGet({ request, env }) {
+  const url = new URL(request.url);
 
-    // Only handle GET requests to /callback
-    if (request.method !== "GET") {
-      return new Response("Method not allowed", { status: 405 });
-    }
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const error = url.searchParams.get("error");
 
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const error = url.searchParams.get("error");
+  if (error) {
+    const desc = url.searchParams.get("error_description") ?? error;
+    return htmlResponse(errorPage(desc), 400);
+  }
 
-    // TikTok returned an error
-    if (error) {
-      const errorDesc = url.searchParams.get("error_description") ?? error;
-      return htmlResponse(errorPage(errorDesc), 400);
-    }
+  if (!code) {
+    return htmlResponse(errorPage("No authorization code received."), 400);
+  }
 
-    if (!code) {
-      return htmlResponse(errorPage("No authorization code received."), 400);
-    }
+  let tokenData;
+  try {
+    tokenData = await exchangeCode(code, env);
+  } catch (err) {
+    console.error("Token exchange failed:", err);
+    return htmlResponse(errorPage("Token exchange failed. Please try again."), 500);
+  }
 
-    // Exchange the code for tokens
-    let tokenData;
-    try {
-      tokenData = await exchangeCode(code, env);
-    } catch (err) {
-      console.error("Token exchange failed:", err);
-      return htmlResponse(errorPage("Token exchange failed. Please try again."), 500);
-    }
+  try {
+    await notifyDiscord(tokenData, state, env);
+  } catch (err) {
+    console.error("Discord webhook failed:", err);
+    // Non-fatal — still return success to the user
+  }
 
-    // Forward credentials to Discord webhook
-    try {
-      await notifyDiscord(tokenData, state, env);
-    } catch (err) {
-      // Non-fatal — still return success to the user
-      console.error("Discord webhook failed:", err);
-    }
-
-    return htmlResponse(successPage());
-  },
-};
+  return htmlResponse(successPage());
+}
 
 // ── TikTok token exchange ──────────────────────────────────────────────────
 
@@ -66,7 +52,7 @@ async function exchangeCode(code, env) {
     client_secret: env.TIKTOK_CLIENT_SECRET,
     code,
     grant_type: "authorization_code",
-    redirect_uri: env.REDIRECT_URI ?? "https://tiktok.mattdonders.com/callback",
+    redirect_uri: "https://tiktok.mattdonders.com/callback",
   });
 
   const res = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
@@ -115,9 +101,7 @@ async function notifyDiscord(tokenData, state, env) {
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) {
-    throw new Error(`Discord webhook returned ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Discord webhook returned ${res.status}`);
 }
 
 // ── HTML responses ─────────────────────────────────────────────────────────
