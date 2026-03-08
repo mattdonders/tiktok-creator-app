@@ -11,6 +11,7 @@
  */
 
 export async function onRequestGet({ request, env }) {
+  const redirectUri = new URL(request.url).origin + "/callback";
   const url = new URL(request.url);
 
   const code = url.searchParams.get("code");
@@ -28,7 +29,7 @@ export async function onRequestGet({ request, env }) {
 
   let tokenData;
   try {
-    tokenData = await exchangeCode(code, env);
+    tokenData = await exchangeCode(code, redirectUri, env);
   } catch (err) {
     console.error("Token exchange failed:", err);
     return htmlResponse(errorPage("Token exchange failed. Please try again."), 500);
@@ -46,13 +47,13 @@ export async function onRequestGet({ request, env }) {
 
 // ── TikTok token exchange ──────────────────────────────────────────────────
 
-async function exchangeCode(code, env) {
+async function exchangeCode(code, redirectUri, env) {
   const body = new URLSearchParams({
     client_key: env.TIKTOK_CLIENT_ID,
     client_secret: env.TIKTOK_CLIENT_SECRET,
     code,
     grant_type: "authorization_code",
-    redirect_uri: "https://creatorpost.app/callback",
+    redirect_uri: redirectUri,
   });
 
   const res = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
