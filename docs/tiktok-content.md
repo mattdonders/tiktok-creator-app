@@ -1,3 +1,22 @@
+# TikTok Developer Portal — App Submission Fields
+
+## App Description
+```
+CreatorPost is a web-based tool that allows content creators to schedule and automatically publish videos to TikTok using the official Content Posting API. Creators connect their TikTok account once via OAuth, then upload videos through the CreatorPost dashboard to be published at a scheduled time — without manual uploads or requiring the TikTok app. Built for individual creators and small teams who produce video content in batches and want to maintain a consistent posting schedule.
+```
+
+## Privacy Policy URL
+```
+https://creatorpost.app/privacy.html
+```
+
+## Terms of Service URL
+```
+https://creatorpost.app/terms.html
+```
+
+---
+
 # CreatorPost TikTok Account — Content Brief
 
 ## Account Bio
