@@ -369,6 +369,53 @@ footer .logo { font-size: 0.95rem; }
 
 .footer-links a:hover { color: var(--text); text-decoration: none; }
 
+/* ── Kit embed overrides ── */
+.kit-embed { width: 100%; max-width: 480px; margin: 0 auto; }
+
+.kit-embed .formkit-form {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.kit-embed .formkit-field input,
+.kit-embed input[name="email_address"] {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  color: var(--text) !important;
+  font-size: 0.9rem !important;
+  padding: 0.65rem 1rem !important;
+}
+
+.kit-embed .formkit-field input:focus,
+.kit-embed input[name="email_address"]:focus {
+  border-color: var(--accent) !important;
+  outline: none !important;
+}
+
+.kit-embed .formkit-submit,
+.kit-embed button[data-element="submit"] {
+  background: var(--accent) !important;
+  border-radius: var(--radius) !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+  transition: background 0.15s !important;
+  border: none !important;
+}
+
+.kit-embed .formkit-submit:hover,
+.kit-embed button[data-element="submit"]:hover {
+  background: var(--accent-hover) !important;
+}
+
+.kit-embed .formkit-guarantee,
+.kit-embed [data-element="guarantee"] {
+  color: var(--muted) !important;
+  font-size: 0.8rem !important;
+}
+
 /* ── Prose pages (privacy/terms) ── */
 .prose-page {
   max-width: 760px;

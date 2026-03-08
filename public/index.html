@@ -115,16 +115,14 @@
   <section class="cta-section" id="waitlist">
     <h2>Ready to automate your TikTok?</h2>
     <p>Join the waitlist and be the first to know when CreatorPost opens for new accounts.</p>
-    <form class="waitlist-form" onsubmit="handleWaitlist(event)">
-      <input type="email" placeholder="you@example.com" required />
-      <button type="submit" class="btn btn-primary">Join Waitlist</button>
-    </form>
-    <p class="success-msg" id="success-msg">You're on the list! We'll be in touch soon.</p>
+    <div class="kit-embed">
+      <script async data-uid="c16463a361" src="https://the-orion-stack.kit.com/c16463a361/index.js"></script>
+    </div>
   </section>
 
   <!-- Footer -->
   <footer>
-    <span class="logo">Creator<span>Post</span></span>
+    <a href="/" class="logo"><img src="/logo.png" alt="CreatorPost" class="logo-img" />Creator<span>Post</span></a>
     <div class="footer-links">
       <a href="/privacy.html">Privacy Policy</a>
       <a href="/terms.html">Terms of Service</a>
@@ -133,14 +131,5 @@
     <span>&copy; 2025 CreatorPost. All rights reserved.</span>
   </footer>
 
-  <script>
-    function handleWaitlist(e) {
-      e.preventDefault();
-      const form = e.target;
-      const msg = document.getElementById('success-msg');
-      form.style.display = 'none';
-      msg.style.display = 'block';
-    }
-  </script>
 </body>
 </html>
