@@ -78,7 +78,7 @@ export async function onRequestPost({ request }) {
   if (!initRes.ok || initData.error?.code !== "ok") {
     console.error("TikTok init error:", JSON.stringify(initData));
     return Response.json(
-      { error: initData.error?.message ?? "Failed to initialize upload" },
+      { error: initData.error?.message ?? "Failed to initialize upload", tiktok_code: initData.error?.code, tiktok_raw: initData },
       { status: 500 }
     );
   }
