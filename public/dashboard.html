@@ -173,7 +173,36 @@
       cursor: pointer;
     }
 
+    /* ── Avatar fallback ── */
+    .account-avatar-wrap {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      overflow: hidden;
+    }
+    .account-avatar-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+
     /* ── Schedule toggle ── */
+    .toggle-label {
+      text-transform: none !important;
+      letter-spacing: normal !important;
+      font-size: 0.9rem !important;
+      font-weight: 400 !important;
+      color: var(--muted);
+    }
     .schedule-toggle {
       display: flex;
       align-items: center;
@@ -336,7 +365,10 @@
 
     <!-- Account strip -->
     <div class="account-strip" id="account-strip" style="display:none">
-      <img id="account-avatar" src="" alt="" class="account-avatar" />
+      <div class="account-avatar-wrap" id="account-avatar-wrap">
+        <span id="account-avatar-initials">🎬</span>
+        <img id="account-avatar" src="" alt="" style="display:none" />
+      </div>
       <div class="account-info">
         <div class="account-name" id="account-name">—</div>
         <div class="account-badge">TikTok connected</div>
@@ -389,7 +421,7 @@
                 <label style="margin-bottom:0.6rem">Schedule</label>
                 <label class="schedule-toggle">
                   <span class="toggle-switch">
-                    <input type="checkbox" id="schedule-toggle" onchange="toggleSchedule(this)" />
+                    <input type="checkbox" id="schedule-toggle" autocomplete="off" onchange="toggleSchedule(this)" />
                     <span class="toggle-slider"></span>
                   </span>
                   <span class="toggle-label" id="toggle-label">Post immediately</span>
@@ -455,6 +487,11 @@
 
     // ── Init ───────────────────────────────────────────────────────────────────
     window.addEventListener("DOMContentLoaded", async () => {
+      // Force-reset toggle (prevents browser autocomplete from restoring checked state)
+      const toggle = document.getElementById("schedule-toggle");
+      toggle.checked = false;
+      toggleSchedule(toggle);
+
       await loadProfile();
       renderPosts();
       setDefaultScheduleTime();
@@ -475,16 +512,27 @@
         const user = data;
         const name = user.display_name ?? "TikTok Account";
         const avatar = user.avatar_url ?? "";
+        const initials = name.charAt(0).toUpperCase() || "T";
 
         document.getElementById("account-name").textContent = name;
-        if (avatar) document.getElementById("account-avatar").src = avatar;
+        if (avatar) {
+          const img = document.getElementById("account-avatar");
+          img.src = avatar;
+          img.style.display = "block";
+          document.getElementById("account-avatar-initials").style.display = "none";
+        } else {
+          document.getElementById("account-avatar-initials").textContent = initials;
+        }
         document.getElementById("account-strip").style.display = "flex";
         document.getElementById("nav-account").innerHTML =
-          (avatar ? `<img src="${avatar}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" />` : "") +
+          (avatar
+            ? `<img src="${avatar}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border-radius:50%" />`
+            : `<span style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;color:#fff">${initials}</span>`) +
           `<span style="font-size:0.85rem;color:var(--muted)">${name}</span>`;
       } catch {
         // Network error — still show dashboard, don't redirect
         document.getElementById("account-name").textContent = "TikTok Account";
+        document.getElementById("account-avatar-initials").textContent = "T";
         document.getElementById("account-strip").style.display = "flex";
       }
     }
