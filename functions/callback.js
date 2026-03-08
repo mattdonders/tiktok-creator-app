@@ -52,7 +52,7 @@ async function exchangeCode(code, env) {
     client_secret: env.TIKTOK_CLIENT_SECRET,
     code,
     grant_type: "authorization_code",
-    redirect_uri: "https://tiktok.mattdonders.com/callback",
+    redirect_uri: "https://creatorpost.app/callback",
   });
 
   const res = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
