@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — CreatorPost</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <style>
+    .dash-layout {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2.5rem 2rem 5rem;
+    }
+
+    /* ── Account strip ── */
+    .account-strip {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+    }
+    .account-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .account-info { flex: 1; }
+    .account-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .account-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      color: #4ade80;
+      margin-top: 0.1rem;
+    }
+    .account-badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #4ade80;
+    }
+    .disconnect-btn {
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: none;
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .disconnect-btn:hover { color: var(--text); border-color: #444; }
+
+    /* ── Grid ── */
+    .dash-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 680px) { .dash-grid { grid-template-columns: 1fr; } }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-title .icon { font-size: 1rem; }
+
+    /* Upload card spans full width */
+    .card-upload { grid-column: 1 / -1; }
+
+    /* ── Form elements ── */
+    .form-group { margin-bottom: 1rem; }
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(124,58,237,0.04);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .drop-zone-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .drop-zone p { color: var(--muted); font-size: 0.875rem; margin: 0; }
+    .drop-zone .file-name {
+      margin-top: 0.5rem;
+      color: var(--accent-light);
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    textarea.input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.9rem;
+      padding: 0.65rem 1rem;
+      resize: vertical;
+      min-height: 80px;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    textarea.input:focus { border-color: var(--accent); outline: none; }
+
+    input.input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.9rem;
+      padding: 0.65rem 1rem;
+      transition: border-color 0.15s;
+    }
+    input.input:focus { border-color: var(--accent); outline: none; }
+
+    select.input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.9rem;
+      padding: 0.65rem 1rem;
+      cursor: pointer;
+    }
+
+    /* ── Schedule toggle ── */
+    .schedule-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+    }
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 22px;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      left: 3px;
+      top: 3px;
+      transition: transform 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+    .toggle-label { font-size: 0.9rem; color: var(--muted); }
+
+    .schedule-fields { display: none; }
+    .schedule-fields.visible { display: block; }
+
+    /* ── Upload form row ── */
+    .upload-form-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 680px) { .upload-form-inner { grid-template-columns: 1fr; } }
+
+    /* ── Progress / status ── */
+    .upload-status {
+      display: none;
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      background: rgba(124,58,237,0.1);
+      border: 1px solid rgba(124,58,237,0.2);
+      color: var(--accent-light);
+    }
+    .upload-status.success {
+      background: rgba(74,222,128,0.1);
+      border-color: rgba(74,222,128,0.2);
+      color: #4ade80;
+    }
+    .upload-status.error {
+      background: rgba(248,113,113,0.1);
+      border-color: rgba(248,113,113,0.2);
+      color: #f87171;
+    }
+
+    /* ── Posts list ── */
+    .empty-state {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    .empty-state .empty-icon { font-size: 1.75rem; margin-bottom: 0.5rem; }
+
+    .post-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .post-item:last-child { border-bottom: none; }
+    .post-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      background: var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+    .post-meta { flex: 1; min-width: 0; }
+    .post-caption {
+      font-size: 0.875rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .post-time { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
+    .post-status {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .post-status.published { background: rgba(74,222,128,0.15); color: #4ade80; }
+    .post-status.scheduled { background: rgba(124,58,237,0.15); color: var(--accent-light); }
+    .post-status.processing { background: rgba(251,191,36,0.15); color: #fbbf24; }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .stat-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+    .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* ── Char counter ── */
+    .char-count { font-size: 0.75rem; color: var(--muted); text-align: right; margin-top: 0.25rem; }
+    .char-count.warn { color: #f87171; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="logo">
+      <img src="/logo.png" alt="CreatorPost" class="logo-img" />
+      Creator<span>Post</span>
+    </a>
+    <ul>
+      <li><a href="/#features">Features</a></li>
+    </ul>
+    <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem;">
+      <span style="font-size:0.85rem;color:var(--muted)">Loading...</span>
+    </div>
+  </nav>
+
+  <div class="dash-layout">
+
+    <!-- Account strip -->
+    <div class="account-strip" id="account-strip" style="display:none">
+      <img id="account-avatar" src="" alt="" class="account-avatar" />
+      <div class="account-info">
+        <div class="account-name" id="account-name">—</div>
+        <div class="account-badge">TikTok connected</div>
+      </div>
+      <button class="disconnect-btn" onclick="disconnect()">Disconnect</button>
+    </div>
+
+    <div class="dash-grid">
+
+      <!-- ── Upload card ── -->
+      <div class="card card-upload">
+        <div class="card-title"><span class="icon">⬆️</span> Post a Video</div>
+
+        <form id="upload-form" onsubmit="submitPost(event)">
+          <div class="upload-form-inner">
+
+            <!-- Left: file + caption -->
+            <div>
+              <div class="form-group">
+                <label>Video file</label>
+                <div class="drop-zone" id="drop-zone">
+                  <input type="file" id="video-input" name="video" accept="video/*" required onchange="onFileSelect(this)" />
+                  <div class="drop-zone-icon">🎬</div>
+                  <p>Drop your video here or <strong>browse</strong></p>
+                  <p style="font-size:0.75rem;margin-top:0.25rem">MP4 · Max 50MB</p>
+                  <div class="file-name" id="file-name"></div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Caption</label>
+                <textarea class="input" id="caption" name="caption" placeholder="Write a caption... #hashtags" maxlength="2200" oninput="updateCharCount(this)"></textarea>
+                <div class="char-count" id="char-count">0 / 2200</div>
+              </div>
+            </div>
+
+            <!-- Right: settings + schedule -->
+            <div>
+              <div class="form-group">
+                <label>Privacy</label>
+                <select class="input" name="privacy" id="privacy">
+                  <option value="SELF_ONLY">Only me (private)</option>
+                  <option value="MUTUAL_FOLLOW_FRIENDS">Friends only</option>
+                  <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                  <option value="PUBLIC_TO_EVERYONE">Everyone (public)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label style="margin-bottom:0.6rem">Schedule</label>
+                <label class="schedule-toggle">
+                  <span class="toggle-switch">
+                    <input type="checkbox" id="schedule-toggle" onchange="toggleSchedule(this)" />
+                    <span class="toggle-slider"></span>
+                  </span>
+                  <span class="toggle-label" id="toggle-label">Post immediately</span>
+                </label>
+
+                <div class="schedule-fields" id="schedule-fields">
+                  <div class="form-group">
+                    <label>Date &amp; time</label>
+                    <input type="datetime-local" class="input" id="schedule-time" name="schedule_time" />
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem" id="submit-btn">
+                Publish Now
+              </button>
+            </div>
+          </div>
+
+          <div class="upload-status" id="upload-status"></div>
+        </form>
+      </div>
+
+      <!-- ── Recent posts ── -->
+      <div class="card">
+        <div class="card-title"><span class="icon">📋</span> Recent Posts</div>
+        <div id="posts-list">
+          <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <div>No posts yet.<br>Publish your first video above.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Stats ── -->
+      <div class="card">
+        <div class="card-title"><span class="icon">📊</span> Overview</div>
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-num" id="stat-total">0</div>
+            <div class="stat-label">Total posts</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num" id="stat-scheduled">0</div>
+            <div class="stat-label">Scheduled</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num" id="stat-this-week">0</div>
+            <div class="stat-label">This week</div>
+          </div>
+        </div>
+        <div style="font-size:0.8rem;color:var(--muted);line-height:1.6">
+          Analytics integration coming soon. Connect your account and start publishing to see stats here.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────────
+    const posts = JSON.parse(localStorage.getItem("cp_posts") ?? "[]");
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+    window.addEventListener("DOMContentLoaded", async () => {
+      await loadProfile();
+      renderPosts();
+      setDefaultScheduleTime();
+    });
+
+    async function loadProfile() {
+      try {
+        const res = await fetch("/api/me");
+        if (res.status === 401) {
+          window.location.href = "/connect.html";
+          return;
+        }
+        const user = await res.json();
+        if (user.display_name) {
+          document.getElementById("account-name").textContent = user.display_name;
+          document.getElementById("account-avatar").src = user.avatar_url ?? "";
+          document.getElementById("account-strip").style.display = "flex";
+          document.getElementById("nav-account").innerHTML =
+            `<img src="${user.avatar_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover" />`+
+            `<span style="font-size:0.85rem;color:var(--muted)">${user.display_name}</span>`;
+        }
+      } catch {
+        // silently fail — still show the dashboard
+      }
+    }
+
+    // ── File select ────────────────────────────────────────────────────────────
+    function onFileSelect(input) {
+      const file = input.files[0];
+      if (file) {
+        document.getElementById("file-name").textContent = `✓ ${file.name}`;
+      }
+    }
+
+    // Drag & drop
+    const dropZone = document.getElementById("drop-zone");
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        const input = document.getElementById("video-input");
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        onFileSelect(input);
+      }
+    });
+
+    // ── Caption char count ─────────────────────────────────────────────────────
+    function updateCharCount(el) {
+      const count = document.getElementById("char-count");
+      count.textContent = `${el.value.length} / 2200`;
+      count.className = "char-count" + (el.value.length > 2000 ? " warn" : "");
+    }
+
+    // ── Schedule toggle ────────────────────────────────────────────────────────
+    function toggleSchedule(checkbox) {
+      const fields = document.getElementById("schedule-fields");
+      const label  = document.getElementById("toggle-label");
+      const btn    = document.getElementById("submit-btn");
+      if (checkbox.checked) {
+        fields.classList.add("visible");
+        label.textContent = "Schedule for later";
+        btn.textContent   = "Schedule Post";
+      } else {
+        fields.classList.remove("visible");
+        label.textContent = "Post immediately";
+        btn.textContent   = "Publish Now";
+      }
+    }
+
+    function setDefaultScheduleTime() {
+      const dt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+      const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
+        .toISOString().slice(0, 16);
+      document.getElementById("schedule-time").value = local;
+    }
+
+    // ── Submit ─────────────────────────────────────────────────────────────────
+    async function submitPost(e) {
+      e.preventDefault();
+      const btn    = document.getElementById("submit-btn");
+      const status = document.getElementById("upload-status");
+
+      const videoFile = document.getElementById("video-input").files[0];
+      const caption   = document.getElementById("caption").value;
+      const scheduled = document.getElementById("schedule-toggle").checked;
+      const schedTime = document.getElementById("schedule-time").value;
+
+      if (!videoFile) {
+        showStatus("Please select a video file.", "error");
+        return;
+      }
+
+      btn.disabled    = true;
+      btn.textContent = "Uploading…";
+      showStatus("Uploading video to TikTok…");
+
+      const form = new FormData();
+      form.append("video", videoFile);
+      form.append("caption", caption);
+      if (scheduled && schedTime) {
+        form.append("schedule_time", new Date(schedTime).toISOString());
+      }
+
+      try {
+        const res  = await fetch("/api/publish", { method: "POST", body: form });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showStatus(data.error ?? "Upload failed.", "error");
+          return;
+        }
+
+        showStatus(scheduled ? "Video scheduled successfully! ✓" : "Video submitted to TikTok! ✓", "success");
+
+        // Save to local post history
+        const post = {
+          id:        data.publish_id,
+          caption:   caption || "(no caption)",
+          time:      scheduled ? schedTime : new Date().toISOString(),
+          status:    scheduled ? "scheduled" : "processing",
+          scheduled,
+        };
+        posts.unshift(post);
+        localStorage.setItem("cp_posts", JSON.stringify(posts.slice(0, 50)));
+        renderPosts();
+        updateStats();
+
+        // Reset form
+        document.getElementById("upload-form").reset();
+        document.getElementById("file-name").textContent = "";
+        document.getElementById("char-count").textContent = "0 / 2200";
+
+        // Poll status
+        if (!scheduled) pollStatus(data.publish_id);
+
+      } catch (err) {
+        showStatus("Network error. Please try again.", "error");
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = scheduled ? "Schedule Post" : "Publish Now";
+      }
+    }
+
+    // ── Status polling ─────────────────────────────────────────────────────────
+    async function pollStatus(publish_id) {
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          const res  = await fetch(`/api/publish?publish_id=${publish_id}`);
+          const data = await res.json();
+          const s    = data.status;
+          if (s === "PUBLISH_COMPLETE" || s === "publish_complete") {
+            updatePostStatus(publish_id, "published");
+            clearInterval(interval);
+          } else if (s === "FAILED" || s === "failed") {
+            updatePostStatus(publish_id, "failed");
+            clearInterval(interval);
+          }
+        } catch { /* ignore */ }
+        if (attempts > 20) clearInterval(interval);
+      }, 5000);
+    }
+
+    function updatePostStatus(id, status) {
+      const post = posts.find(p => p.id === id);
+      if (post) {
+        post.status = status;
+        localStorage.setItem("cp_posts", JSON.stringify(posts));
+        renderPosts();
+      }
+    }
+
+    // ── Render posts ───────────────────────────────────────────────────────────
+    function renderPosts() {
+      const container = document.getElementById("posts-list");
+      if (!posts.length) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>No posts yet.<br>Publish your first video above.</div></div>`;
+        return;
+      }
+      container.innerHTML = posts.slice(0, 10).map(p => `
+        <div class="post-item">
+          <div class="post-thumb">🎬</div>
+          <div class="post-meta">
+            <div class="post-caption">${escHtml(p.caption)}</div>
+            <div class="post-time">${formatTime(p.time)}</div>
+          </div>
+          <div class="post-status ${p.status}">${p.status}</div>
+        </div>
+      `).join("");
+      updateStats();
+    }
+
+    function updateStats() {
+      const now      = new Date();
+      const weekAgo  = new Date(now - 7 * 24 * 60 * 60 * 1000);
+      document.getElementById("stat-total").textContent     = posts.length;
+      document.getElementById("stat-scheduled").textContent = posts.filter(p => p.status === "scheduled").length;
+      document.getElementById("stat-this-week").textContent = posts.filter(p => new Date(p.time) > weekAgo).length;
+    }
+
+    // ── Disconnect ─────────────────────────────────────────────────────────────
+    function disconnect() {
+      if (confirm("Disconnect your TikTok account?")) {
+        document.cookie = "cp_token=; Max-Age=0; Path=/";
+        document.cookie = "cp_open_id=; Max-Age=0; Path=/";
+        document.cookie = "cp_refresh=; Max-Age=0; Path=/";
+        window.location.href = "/connect.html";
+      }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function showStatus(msg, type = "info") {
+      const el = document.getElementById("upload-status");
+      el.textContent  = msg;
+      el.className    = "upload-status" + (type !== "info" ? ` ${type}` : "");
+      el.style.display = "block";
+    }
+
+    function formatTime(iso) {
+      return new Date(iso).toLocaleString(undefined, {
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+      });
+    }
+
+    function escHtml(str) {
+      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+  </script>
+
+</body>
+</html>

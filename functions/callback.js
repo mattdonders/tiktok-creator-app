@@ -42,7 +42,15 @@ export async function onRequestGet({ request, env }) {
     // Non-fatal — still return success to the user
   }
 
-  return htmlResponse(successPage());
+  const { access_token, refresh_token, open_id, expires_in } = tokenData;
+  const maxAge = expires_in ?? 86400;
+
+  const headers = new Headers({ "Location": "/dashboard" });
+  headers.append("Set-Cookie", `cp_token=${access_token}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/`);
+  headers.append("Set-Cookie", `cp_open_id=${open_id}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/`);
+  headers.append("Set-Cookie", `cp_refresh=${refresh_token ?? ""}; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000; Path=/`);
+
+  return new Response(null, { status: 302, headers });
 }
 
 // ── TikTok token exchange ──────────────────────────────────────────────────
@@ -114,27 +122,6 @@ function htmlResponse(body, status = 200) {
   });
 }
 
-function successPage() {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connected — CreatorPost</title>
-  <link rel="stylesheet" href="/styles.css" />
-</head>
-<body>
-  <nav>
-    <a href="/" class="logo">Creator<span style="color:var(--accent-light)">Post</span></a>
-  </nav>
-  <div class="callback-page">
-    <div class="icon">✅</div>
-    <h1>TikTok Connected!</h1>
-    <p>Your account has been successfully linked to CreatorPost.<br>You can close this window.</p>
-  </div>
-</body>
-</html>`;
-}
 
 function errorPage(message) {
   return `<!DOCTYPE html>
