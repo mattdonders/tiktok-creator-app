@@ -10,33 +10,36 @@ const app = new Hono();
 
 // ── Axiom logging ─────────────────────────────────────────────────────────────
 
-function log(c, events) {
+function log(c, fields) {
   if (!c.env.AXIOM_TOKEN || !c.env.AXIOM_DATASET) return;
-  const body = (Array.isArray(events) ? events : [events])
-    .map(e => JSON.stringify({ _time: new Date().toISOString(), ...e }))
-    .join('\n');
+  const req_id  = c.get('req_id') ?? null;
+  const user_id = c.get('log_user_id') ?? null;
+  const event   = JSON.stringify({ _time: new Date().toISOString(), req_id, user_id, ...fields });
   const p = fetch(`https://api.axiom.co/v1/datasets/${c.env.AXIOM_DATASET}/ingest`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${c.env.AXIOM_TOKEN}`,
       'Content-Type': 'application/x-ndjson',
     },
-    body,
+    body: event,
   });
   c.executionCtx.waitUntil(p);
 }
 
 // Request logging middleware
 app.use('*', async (c, next) => {
+  const req_id = crypto.randomUUID().slice(0, 8);
+  c.set('req_id', req_id);
   const start = Date.now();
   await next();
+  // Attach user_id to request log if session was resolved during the request
   log(c, {
-    type:     'request',
-    method:   c.req.method,
-    path:     new URL(c.req.url).pathname,
-    status:   c.res.status,
-    duration: Date.now() - start,
-    country:  c.req.raw.cf?.country ?? null,
+    type:    'request',
+    method:  c.req.method,
+    path:    new URL(c.req.url).pathname,
+    status:  c.res.status,
+    ms:      Date.now() - start,
+    country: c.req.raw.cf?.country ?? null,
   });
 });
 
@@ -44,6 +47,7 @@ app.use('*', async (c, next) => {
 app.onError((err, c) => {
   log(c, {
     type:    'error',
+    event:   'unhandled_exception',
     message: err.message,
     stack:   err.stack,
     path:    new URL(c.req.url).pathname,
@@ -65,6 +69,7 @@ async function getSession(c) {
   const row = await c.env.DB.prepare(
     'SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?'
   ).bind(sid, now()).first();
+  if (row) c.set('log_user_id', row.user_id);
   return row ?? null;
 }
 
