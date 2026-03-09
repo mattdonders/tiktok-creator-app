@@ -105,7 +105,7 @@ app.get('/auth/tiktok', async (c) => {
   if (!clientId) return c.text('TikTok not configured', 503);
 
   const origin      = new URL(c.req.url).origin;
-  const redirectUri = `${origin}/auth/tiktok/callback`;
+  const redirectUri = `${origin}/callback`;
   const state       = `${session.user_id}:${newId()}`;
 
   const params = new URLSearchParams({
@@ -120,7 +120,7 @@ app.get('/auth/tiktok', async (c) => {
 });
 
 // GET /auth/tiktok/callback
-app.get('/auth/tiktok/callback', async (c) => {
+app.get('/callback', async (c) => {
   const code  = c.req.query('code');
   const state = c.req.query('state') ?? '';
   const error = c.req.query('error');
