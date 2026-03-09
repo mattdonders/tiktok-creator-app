@@ -267,7 +267,7 @@ app.get('/auth/instagram', async (c) => {
   const params = new URLSearchParams({
     client_id:     c.env.META_APP_ID,
     redirect_uri:  redirectUri,
-    scope:         'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_manage_comments,instagram_business_manage_messages',
+    scope:         'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_business_manage_comments,instagram_business_manage_messages',
     response_type: 'code',
     state,
   });
