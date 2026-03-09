@@ -295,6 +295,7 @@ app.post('/api/youtube/upload-session', async (c) => {
     },
   };
 
+  const origin = new URL(c.req.url).origin;
   const initRes = await fetch(
     'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
     {
@@ -304,6 +305,7 @@ app.post('/api/youtube/upload-session', async (c) => {
         'Content-Type':            'application/json; charset=UTF-8',
         'X-Upload-Content-Length': String(file_size),
         'X-Upload-Content-Type':   mime_type,
+        'Origin':                  origin,
       },
       body: JSON.stringify(metadata),
     }
