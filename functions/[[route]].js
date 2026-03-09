@@ -658,7 +658,7 @@ app.get('/api/posts', async (c) => {
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
   const posts = await c.env.DB.prepare(`
-    SELECT p.*, a.display_name, a.avatar_url, a.platform_user_id
+    SELECT p.*, a.display_name, a.avatar_url, a.platform_user_id, a.platform
     FROM posts p
     JOIN connected_accounts a ON p.account_id = a.id
     WHERE p.user_id = ?

@@ -676,6 +676,7 @@
         time:      p.schedule_time ?? p.created_at ?? p.time ?? new Date().toISOString(),
         status:    (p.status ?? "processing").toLowerCase(),
         account:   p.account_name ?? p.display_name ?? "",
+        platform:  p.platform ?? '',
         scheduled: p.status === "scheduled",
       };
     }
@@ -851,7 +852,7 @@
         id: data.publish_id, caption: caption || "(no caption)",
         time: scheduled ? schedTime : new Date().toISOString(),
         status: scheduled ? "scheduled" : "processing",
-        account_name: acc.display_name ?? "",
+        account_name: acc.display_name ?? "", platform: 'tiktok',
       });
       if (!scheduled && data.publish_id) pollStatus(data.publish_id, acc.id);
       return { message, post };
@@ -919,7 +920,7 @@
       const post = normalisePost({
         id: post_id, caption: caption || "(no caption)",
         time: new Date().toISOString(), status: "processing",
-        account_name: acc.display_name ?? "",
+        account_name: acc.display_name ?? "", platform: 'youtube',
       });
       return { message: `Uploaded to ${accName} ✓ (processing)`, post };
     }
@@ -999,7 +1000,10 @@
           <div class="post-meta">
             <div class="post-caption">${escHtml(p.caption)}</div>
             <div class="post-time">${formatTime(p.time)}</div>
-            ${p.account ? `<div class="post-account">${escHtml(p.account)}</div>` : ""}
+            ${p.account || p.platform ? `<div class="post-account" style="display:flex;align-items:center;gap:0.4rem">
+              ${p.account ? escHtml(p.account) : ''}
+              ${p.platform ? `<span style="font-size:0.65rem;font-weight:600;color:${PLATFORM_COLOR[p.platform]??'#888'};background:${PLATFORM_BG[p.platform]??'rgba(255,255,255,0.08)'};border-radius:3px;padding:0.1rem 0.35rem">${escHtml(PLATFORM_LABEL[p.platform]??p.platform)}</span>` : ''}
+            </div>` : ""}
           </div>
           <div class="post-status ${escHtml(p.status)}">${escHtml(p.status)}</div>
         </div>`).join("");
