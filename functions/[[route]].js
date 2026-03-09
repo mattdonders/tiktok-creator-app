@@ -210,7 +210,9 @@ app.get('/callback', async (c) => {
   // Fetch profile
   let profile = {};
   try {
-    profile = await fetchTikTokProfile(tokenData.access_token);
+    const result = await fetchTikTokProfile(tokenData.access_token);
+    profile = result.user;
+    log(c, { type: 'event', event: 'tiktok_profile_fetched', user_id: userId, display_name: profile.display_name ?? null, avatar_url: profile.avatar_url ?? null, tiktok_error: result.raw?.error?.code ?? null, tiktok_error_message: result.raw?.error?.message ?? null });
   } catch (err) {
     console.error('Profile fetch failed:', err);
     log(c, { type: 'error', event: 'tiktok_profile_fetch_failed', message: err.message, user_id: userId });
@@ -463,12 +465,12 @@ async function exchangeTikTokCode(code, redirectUri, env) {
 }
 
 async function fetchTikTokProfile(accessToken) {
-  const res = await fetch(
+  const res  = await fetch(
     'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,username',
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
-  return data.data?.user ?? {};
+  return { user: data.data?.user ?? {}, raw: data };
 }
 
 async function sendMagicLink(email, link, env) {
