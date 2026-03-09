@@ -236,7 +236,10 @@ app.post('/api/disconnect', async (c) => {
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
   const { account_id } = await c.req.json().catch(() => ({}));
-  if (!account_id) return c.json({ error: 'Missing account_id' }, 400);
+  if (!account_id) {
+    log(c, { type: 'error', event: 'disconnect_failed', reason: 'missing_account_id', user_id: session.user_id });
+    return c.json({ error: 'Missing account_id' }, 400);
+  }
 
   await c.env.DB.prepare(
     'DELETE FROM connected_accounts WHERE id = ? AND user_id = ?'
