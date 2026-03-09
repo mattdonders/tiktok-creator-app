@@ -258,14 +258,14 @@ app.get('/auth/instagram', async (c) => {
   const session = await getSession(c);
   if (!session) return c.redirect('/login');
 
-  if (!c.env.INSTAGRAM_APP_ID) return c.text('Instagram not configured', 503);
+  if (!c.env.META_APP_ID) return c.text('Instagram not configured', 503);
 
   const origin      = new URL(c.req.url).origin;
   const redirectUri = `${origin}/callback/instagram`;
   const state       = `${session.user_id}:${newId()}`;
 
   const params = new URLSearchParams({
-    client_id:     c.env.INSTAGRAM_APP_ID,
+    client_id:     c.env.META_APP_ID,
     redirect_uri:  redirectUri,
     scope:         'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_manage_comments,instagram_business_manage_messages',
     response_type: 'code',
@@ -1033,7 +1033,7 @@ async function fetchYouTubeChannel(accessToken) {
 
 async function exchangeInstagramCode(code, redirectUri, env) {
   const body = new URLSearchParams({
-    client_id:     env.INSTAGRAM_APP_ID,
+    client_id:     env.META_APP_ID,
     client_secret: env.INSTAGRAM_APP_SECRET,
     grant_type:    'authorization_code',
     redirect_uri:  redirectUri,
