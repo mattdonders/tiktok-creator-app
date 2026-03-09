@@ -42,15 +42,8 @@
       flex-wrap: wrap;
     }
 
-    /* ── Grid ── */
-    .dash-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.25rem;
-    }
-    @media (max-width: 680px) {
-      .dash-grid { grid-template-columns: 1fr; }
-    }
+    /* ── Stack layout ── */
+    .dash-stack { display: flex; flex-direction: column; gap: 1.25rem; }
 
     /* ── Cards ── */
     .card {
@@ -72,8 +65,18 @@
     }
     .card-title .icon { font-size: 1rem; }
 
-    /* Upload card spans full width */
-    .card-upload { grid-column: 1 / -1; }
+    /* ── Inline stats strip ── */
+    .stats-strip {
+      display: flex;
+      align-items: center;
+    }
+    .stat-item {
+      flex: 1;
+      text-align: center;
+      padding: 0.4rem 1rem;
+      border-right: 1px solid var(--border);
+    }
+    .stat-item:last-child { border-right: none; }
 
     /* ── Form elements ── */
     .form-group { margin-bottom: 1rem; }
@@ -234,7 +237,8 @@
       max-height: 200px;
       overflow-y: auto;
     }
-    .account-check-row {
+    .account-check-row,
+    .form-group label.account-check-row {
       display: flex;
       align-items: center;
       gap: 0.65rem;
@@ -244,12 +248,12 @@
       cursor: pointer;
       user-select: none;
       transition: border-color 0.15s;
-      /* prevent .form-group label styles from bleeding in */
-      text-transform: none;
-      letter-spacing: normal;
-      font-weight: 400;
-      color: var(--text);
-      margin-bottom: 0;
+      text-transform: none !important;
+      letter-spacing: normal !important;
+      font-weight: 400 !important;
+      font-size: 0.875rem !important;
+      color: var(--text) !important;
+      margin-bottom: 0 !important;
     }
     .account-check-row:hover { border-color: #333; }
     .account-check-row.selected { border-color: var(--accent); background: rgba(124,58,237,0.06); }
@@ -344,25 +348,13 @@
     .post-status.failed     { background: rgba(248,113,113,0.15); color: #f87171; }
 
     /* ── Stats ── */
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1rem;
-      margin-bottom: 1.25rem;
-    }
-    .stat-box {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem;
-      text-align: center;
-    }
     .stat-num {
-      font-size: 1.5rem;
+      font-size: 1.6rem;
       font-weight: 800;
       letter-spacing: -0.04em;
+      line-height: 1;
     }
-    .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+    .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
     /* ── Char counter ── */
     .char-count { font-size: 0.75rem; color: var(--muted); text-align: right; margin-top: 0.25rem; }
@@ -398,11 +390,11 @@
       </div>
     </div>
 
-    <!-- ── Main dashboard grid ── -->
-    <div class="dash-grid">
+    <!-- ── Main dashboard stack ── -->
+    <div class="dash-stack">
 
-      <!-- ── Upload card (full width) ── -->
-      <div class="card card-upload">
+      <!-- ── Upload card ── -->
+      <div class="card">
         <div class="card-title"><span class="icon">⬆️</span> Post a Video</div>
 
         <form id="upload-form" onsubmit="submitPost(event)">
@@ -443,20 +435,20 @@
               <div class="form-group">
                 <label>Privacy</label>
                 <select class="input" id="privacy" name="privacy">
-                  <option value="private">Only me (private)</option>
-                  <option value="public">Everyone (public)</option>
+                  <option value="private">Only Me (Private)</option>
+                  <option value="public">Everyone (Public)</option>
                   <option value="unlisted">Unlisted</option>
                 </select>
               </div>
 
               <div class="form-group">
-                <label style="margin-bottom:0.6rem">Schedule</label>
+                <label>Schedule</label>
                 <label class="schedule-toggle">
                   <span class="toggle-switch">
                     <input type="checkbox" id="schedule-toggle" autocomplete="off" onchange="toggleSchedule(this)" />
                     <span class="toggle-slider"></span>
                   </span>
-                  <span class="toggle-label" id="toggle-label">Post immediately</span>
+                  <span class="toggle-label">Schedule for later</span>
                 </label>
 
                 <div class="schedule-fields" id="schedule-fields">
@@ -478,6 +470,24 @@
         </form>
       </div>
 
+      <!-- ── Stats strip ── -->
+      <div class="card" style="padding:1rem 1.5rem">
+        <div class="stats-strip">
+          <div class="stat-item">
+            <div class="stat-num" id="stat-total">—</div>
+            <div class="stat-label">Total Posts</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-num" id="stat-scheduled">—</div>
+            <div class="stat-label">Scheduled</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-num" id="stat-this-week">—</div>
+            <div class="stat-label">Published This Week</div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Recent posts ── -->
       <div class="card">
         <div class="card-title"><span class="icon">📋</span> Recent Posts</div>
@@ -489,29 +499,7 @@
         </div>
       </div>
 
-      <!-- ── Overview stats ── -->
-      <div class="card">
-        <div class="card-title"><span class="icon">📊</span> Overview</div>
-        <div class="stats-row">
-          <div class="stat-box">
-            <div class="stat-num" id="stat-total">—</div>
-            <div class="stat-label">Total posts</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-num" id="stat-scheduled">—</div>
-            <div class="stat-label">Scheduled</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-num" id="stat-this-week">—</div>
-            <div class="stat-label">This week</div>
-          </div>
-        </div>
-        <div style="font-size:0.8rem;color:var(--muted);line-height:1.6">
-          Stats are computed from your post history. Connect an account and publish a video to get started.
-        </div>
-      </div>
-
-    </div><!-- /dash-grid -->
+    </div><!-- /dash-stack -->
   </div><!-- /dash-layout -->
 
   <script>
@@ -732,15 +720,7 @@
     // Schedule toggle
     // ─────────────────────────────────────────────────────────────────────────
     function toggleSchedule(checkbox) {
-      const fields = document.getElementById("schedule-fields");
-      const label  = document.getElementById("toggle-label");
-      if (checkbox.checked) {
-        fields.classList.add("visible");
-        label.textContent = "Schedule for later";
-      } else {
-        fields.classList.remove("visible");
-        label.textContent = "Post immediately";
-      }
+      document.getElementById("schedule-fields").classList.toggle("visible", checkbox.checked);
       updateSubmitBtn();
     }
 
