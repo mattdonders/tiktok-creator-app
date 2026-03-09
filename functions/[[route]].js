@@ -132,7 +132,7 @@ app.get('/callback', async (c) => {
   if (!userId) return c.redirect('/dashboard?error=invalid_state');
 
   const origin      = new URL(c.req.url).origin;
-  const redirectUri = `${origin}/auth/tiktok/callback`;
+  const redirectUri = `${origin}/callback`;
 
   // Exchange code for tokens
   let tokenData;
