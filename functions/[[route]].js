@@ -376,7 +376,10 @@ app.post('/api/publish', async (c) => {
   }
 
   if (!initRes.ok || initData.error?.code !== 'ok') {
-    log(c, { type: 'error', event: 'publish_failed', reason: 'tiktok_init_failed', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id, account_id: accountId });
+    const tiktokCode = initData.error?.code;
+    const isTokenError = initRes.status === 401 || ['access_token_invalid', 'access_token_expired'].includes(tiktokCode);
+    log(c, { type: 'error', event: 'publish_failed', reason: isTokenError ? 'token_revoked' : 'tiktok_init_failed', tiktok_error: tiktokCode, tiktok_message: initData.error?.message, user_id: session.user_id, account_id: accountId });
+    if (isTokenError) return c.json({ error: 'token_revoked', account_id: accountId }, 401);
     return c.json({ error: initData.error?.message ?? 'Failed to initialize upload', tiktok_raw: initData }, 500);
   }
 

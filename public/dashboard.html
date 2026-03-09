@@ -876,12 +876,16 @@
         const data = await res.json();
 
         if (!res.ok) {
-          showStatus(data.error ?? "Upload failed. Please try again.", "error");
+          if (data.error === 'token_revoked') {
+            showStatus('Your TikTok connection has expired or been revoked. Please <a href="/auth/tiktok" style="color:inherit;text-decoration:underline">reconnect your account</a>.', "error");
+          } else {
+            showStatus(data.error ?? "Upload failed. Please try again.", "error");
+          }
           return;
         }
 
         // Success message
-        const acc = accounts.find(a => (a.open_id ?? a.account_id) === accountId);
+        const acc = accounts.find(a => a.id === accountId);
         const accName = acc?.display_name ?? "TikTok";
 
         const successMsg = scheduled
@@ -915,7 +919,7 @@
         // Re-select first account (reset clears selects)
         if (accounts.length) {
           document.getElementById("account-select").value =
-            accounts[0].open_id ?? accounts[0].account_id ?? "";
+            accounts[0].id ?? "";
         }
 
         // Poll for status if not scheduled
