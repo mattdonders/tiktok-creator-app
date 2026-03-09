@@ -386,6 +386,7 @@
       <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem">+ TikTok</a>
         <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
+        <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#e1306c;border-color:rgba(225,48,108,0.4)">+ Instagram</a>
         <a href="/account" style="font-size:0.8rem;color:var(--muted);padding:0 0.25rem;white-space:nowrap">Manage →</a>
       </div>
     </div>
@@ -576,12 +577,13 @@
       label.innerHTML = parts.join(' · ') + '<span style="color:var(--muted)"> connected</span>';
     }
 
-    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube' };
-    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)' };
-    const PLATFORM_COLOR = { tiktok: '#ccc',   youtube: '#ff6b6b' };
+    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
+    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)', instagram: 'rgba(225,48,108,0.15)' };
+    const PLATFORM_COLOR = { tiktok: '#ccc',   youtube: '#ff6b6b',  instagram: '#e1306c' };
     const PRIVACY_MAP    = {
-      tiktok:  { public: 'PUBLIC_TO_EVERYONE', unlisted: 'SELF_ONLY', private: 'SELF_ONLY'  },
-      youtube: { public: 'public',             unlisted: 'unlisted',  private: 'private'     },
+      tiktok:    { public: 'PUBLIC_TO_EVERYONE', unlisted: 'SELF_ONLY', private: 'SELF_ONLY' },
+      youtube:   { public: 'public',             unlisted: 'unlisted',  private: 'private'   },
+      instagram: { public: 'public',             unlisted: 'public',    private: 'public'    },
     };
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -655,12 +657,13 @@
       try {
         const res = await fetch("/api/posts");
         if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.posts)) {
+          const data     = await res.json();
+          const apiPosts = Array.isArray(data) ? data : null;
+          if (apiPosts) {
             // Merge API posts with local cache (API wins on id collision)
-            const apiIds  = new Set(data.posts.map(p => p.id ?? p.publish_id));
-            const local   = posts.filter(p => !apiIds.has(p.id));
-            posts = [...data.posts.map(normalisePost), ...local];
+            const apiIds = new Set(apiPosts.map(p => p.id ?? p.publish_id));
+            const local  = posts.filter(p => !apiIds.has(p.id));
+            posts = [...apiPosts.map(normalisePost), ...local];
             localStorage.setItem("cp_posts", JSON.stringify(posts.slice(0, 50)));
           }
         }
@@ -782,11 +785,14 @@
       btn.textContent = checkedAccounts.length > 1 ? `Uploading to ${checkedAccounts.length}…` : "Uploading…";
       showStatus(checkedAccounts.length > 1 ? `Uploading to ${checkedAccounts.length} accounts…` : "Uploading…");
 
+      const singleUpload = checkedAccounts.length === 1;
       const results = await Promise.allSettled(
         checkedAccounts.map(acc => {
           const platform = acc.platform ?? 'tiktok';
           if (platform === 'youtube') {
             return submitYouTube({ acc, videoFile, caption, privacy });
+          } else if (platform === 'instagram') {
+            return submitInstagram({ acc, videoFile, caption, singleUpload });
           } else {
             return submitTikTok({ acc, videoFile, caption, privacy, scheduled, schedTime });
           }
@@ -923,6 +929,68 @@
         account_name: acc.display_name ?? "", platform: 'youtube',
       });
       return { message: `Uploaded to ${accName} ✓ (processing)`, post };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Instagram upload (server-side via rupload + container + publish)
+    // ─────────────────────────────────────────────────────────────────────────
+    async function submitInstagram({ acc, videoFile, caption, singleUpload = false }) {
+      const form = new FormData();
+      form.append('video',      videoFile);
+      form.append('caption',    caption);
+      form.append('account_id', acc.id);
+
+      if (singleUpload) showStatus('Uploading to Instagram…');
+      const res  = await fetch('/api/instagram/upload', { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const msg = data.error === 'token_revoked'
+          ? `${acc.display_name ?? 'Instagram'} connection expired — reconnect above`
+          : (data.error ?? 'Instagram upload failed');
+        throw new Error(msg);
+      }
+
+      const { container_id, post_id } = data;
+      const accName = acc.display_name ?? 'Instagram';
+
+      if (singleUpload) showStatus('Processing Instagram video… (this may take a moment)');
+      const statusCode = await pollInstagramStatus(container_id, acc.id);
+      if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+        throw new Error(`Instagram processing ${statusCode.toLowerCase()}`);
+      }
+
+      if (singleUpload) showStatus('Publishing to Instagram…');
+      const pubRes  = await fetch('/api/instagram/publish', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ container_id, account_id: acc.id, post_id }),
+      });
+      const pubData = await pubRes.json();
+
+      if (!pubRes.ok) throw new Error(pubData.error ?? 'Instagram publish failed');
+
+      const post = normalisePost({
+        id: post_id, caption: caption || '(no caption)',
+        time: new Date().toISOString(), status: 'published',
+        account_name: acc.display_name ?? '', platform: 'instagram',
+      });
+      return { message: `Posted to ${accName} ✓`, post };
+    }
+
+    async function pollInstagramStatus(container_id, account_id) {
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const url  = `/api/instagram/status?container_id=${encodeURIComponent(container_id)}&account_id=${encodeURIComponent(account_id)}`;
+          const res  = await fetch(url);
+          const data = await res.json();
+          const s    = data.status_code ?? '';
+          if (s === 'FINISHED') return s;
+          if (s === 'ERROR' || s === 'EXPIRED') return s;
+        } catch { /* ignore */ }
+      }
+      return 'FINISHED'; // assume finished after max attempts
     }
 
     function addPost(post) {

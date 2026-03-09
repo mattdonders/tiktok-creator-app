@@ -205,6 +205,7 @@
         <div style="display:flex;gap:0.5rem">
           <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem">+ TikTok</a>
           <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
+          <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#e1306c;border-color:rgba(225,48,108,0.4)">+ Instagram</a>
         </div>
       </div>
       <div id="accounts-list">
@@ -230,9 +231,9 @@
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube' };
-    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)' };
-    const PLATFORM_COLOR = { tiktok: '#ccc', youtube: '#ff6b6b' };
+    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
+    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)', instagram: 'rgba(225,48,108,0.15)' };
+    const PLATFORM_COLOR = { tiktok: '#ccc', youtube: '#ff6b6b', instagram: '#e1306c' };
 
     let user     = {};
     let accounts = [];

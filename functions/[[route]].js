@@ -252,6 +252,109 @@ app.get('/callback/youtube', async (c) => {
   return c.redirect('/dashboard');
 });
 
+// ── Instagram OAuth ────────────────────────────────────────────────────────────
+
+app.get('/auth/instagram', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+
+  if (!c.env.INSTAGRAM_APP_ID) return c.text('Instagram not configured', 503);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/instagram`;
+  const state       = `${session.user_id}:${newId()}`;
+
+  const params = new URLSearchParams({
+    client_id:     c.env.INSTAGRAM_APP_ID,
+    redirect_uri:  redirectUri,
+    scope:         'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_manage_comments,instagram_business_manage_messages',
+    response_type: 'code',
+    state,
+  });
+
+  return c.redirect(`https://api.instagram.com/oauth/authorize?${params}`);
+});
+
+app.get('/callback/instagram', async (c) => {
+  const code  = c.req.query('code');
+  const state = c.req.query('state') ?? '';
+  const error = c.req.query('error');
+
+  if (error) {
+    log(c, { type: 'error', event: 'instagram_oauth_error', reason: error });
+    return c.redirect('/dashboard?error=' + encodeURIComponent(error));
+  }
+  if (!code) {
+    log(c, { type: 'error', event: 'instagram_oauth_error', reason: 'no_code' });
+    return c.redirect('/dashboard?error=no_code');
+  }
+
+  const userId = state.split(':')[0];
+  if (!userId) {
+    log(c, { type: 'error', event: 'instagram_oauth_error', reason: 'invalid_state' });
+    return c.redirect('/dashboard?error=invalid_state');
+  }
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/instagram`;
+
+  // Exchange code for short-lived token
+  let tokenData;
+  try {
+    tokenData = await exchangeInstagramCode(code, redirectUri, c.env);
+  } catch (err) {
+    log(c, { type: 'error', event: 'instagram_token_exchange_failed', message: err.message, user_id: userId });
+    return c.redirect('/dashboard?error=token_failed');
+  }
+
+  // Exchange short-lived for long-lived (60 days)
+  let longToken = { access_token: tokenData.access_token, expires_in: 3600 };
+  try {
+    longToken = await exchangeInstagramLongLived(tokenData.access_token, c.env);
+  } catch (err) {
+    log(c, { type: 'error', event: 'instagram_longlived_failed', message: err.message, user_id: userId });
+  }
+
+  // Fetch profile
+  let profile = {};
+  try {
+    profile = await fetchInstagramProfile(longToken.access_token);
+  } catch (err) {
+    log(c, { type: 'error', event: 'instagram_profile_fetch_failed', message: err.message, user_id: userId });
+  }
+
+  const igUserId  = String(tokenData.user_id ?? profile.id ?? '');
+  const expiresAt = longToken.expires_in ? now() + longToken.expires_in : null;
+  const accountId = newId();
+
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO connected_accounts
+        (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, token_expires_at, created_at)
+      VALUES (?, ?, 'instagram', ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, platform, platform_user_id) DO UPDATE SET
+        display_name     = excluded.display_name,
+        avatar_url       = excluded.avatar_url,
+        access_token     = excluded.access_token,
+        token_expires_at = excluded.token_expires_at
+    `).bind(
+      accountId, userId,
+      igUserId,
+      profile.name ?? null,
+      profile.profile_picture_url ?? null,
+      longToken.access_token,
+      expiresAt,
+      now()
+    ).run();
+  } catch (err) {
+    log(c, { type: 'error', event: 'instagram_connect_failed', message: err.message, user_id: userId });
+    return c.redirect('/dashboard?error=db_failed');
+  }
+
+  log(c, { type: 'event', event: 'instagram_connected', user_id: userId, ig_user_id: igUserId });
+  return c.redirect('/dashboard');
+});
+
 // ── API — YouTube upload session ───────────────────────────────────────────────
 
 app.post('/api/youtube/upload-session', async (c) => {
@@ -350,6 +453,185 @@ app.post('/api/youtube/complete', async (c) => {
 
   log(c, { type: 'event', event: 'youtube_upload_complete', user_id: session.user_id, post_id, video_id: video_id ?? null });
   return c.json({ ok: true });
+});
+
+// ── API — Instagram upload ─────────────────────────────────────────────────────
+
+const IG_GRAPH   = 'https://graph.instagram.com/v23.0';
+const IG_RUPLOAD = 'https://rupload.facebook.com/ig-api-upload';
+
+app.post('/api/instagram/upload', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  let formData;
+  try { formData = await c.req.formData(); }
+  catch { return c.json({ error: 'Invalid form data' }, 400); }
+
+  const videoFile = formData.get('video');
+  const caption   = (formData.get('caption') ?? '').slice(0, 2200);
+  const accountId = formData.get('account_id');
+
+  if (!videoFile || typeof videoFile === 'string') {
+    return c.json({ error: 'No video file provided' }, 400);
+  }
+
+  const account = await c.env.DB.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(accountId, session.user_id, 'instagram').first();
+
+  if (!account) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'account_not_found', account_id: accountId, user_id: session.user_id });
+    return c.json({ error: 'Account not found' }, 404);
+  }
+
+  const accessToken = account.access_token;
+  const igUserId    = account.platform_user_id;
+  const videoBytes  = await videoFile.arrayBuffer();
+  const videoSize   = videoBytes.byteLength;
+
+  if (videoSize > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 50MB)' }, 413);
+
+  // Step 1: Initialize rupload session
+  const initRes = await fetch(`${IG_RUPLOAD}/${igUserId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `OAuth ${accessToken}`,
+      'Content-Type':  'application/octet-stream',
+      'file_size':     String(videoSize),
+    },
+  });
+
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'rupload_init_failed', status: initRes.status, message: errText, user_id: session.user_id });
+    return c.json({ error: 'Failed to initialize Instagram upload' }, 500);
+  }
+
+  const { upload_id } = await initRes.json();
+  if (!upload_id) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_upload_id', user_id: session.user_id });
+    return c.json({ error: 'Instagram upload initialization failed (no upload_id)' }, 500);
+  }
+
+  // Step 2: Upload video bytes
+  const uploadRes = await fetch(`${IG_RUPLOAD}/${igUserId}/${upload_id}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `OAuth ${accessToken}`,
+      'Content-Type':  'application/octet-stream',
+      'file_size':     String(videoSize),
+      'offset':        '0',
+    },
+    body: videoBytes,
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'rupload_put_failed', status: uploadRes.status, message: errText, user_id: session.user_id });
+    return c.json({ error: 'Video upload to Instagram failed' }, 500);
+  }
+
+  const uploadResult = await uploadRes.json();
+  const uploadHandle = uploadResult.h;
+  if (!uploadHandle) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_upload_handle', raw: JSON.stringify(uploadResult), user_id: session.user_id });
+    return c.json({ error: 'Instagram upload did not return a handle' }, 500);
+  }
+
+  // Step 3: Create media container
+  const containerRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      media_type:    'REELS',
+      upload_id:     uploadHandle,
+      caption,
+      share_to_feed: 'true',
+      access_token:  accessToken,
+    }),
+  });
+
+  if (!containerRes.ok) {
+    const errText = await containerRes.text();
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_failed', status: containerRes.status, message: errText, user_id: session.user_id });
+    return c.json({ error: 'Failed to create Instagram media container' }, 500);
+  }
+
+  const containerData = await containerRes.json();
+  if (containerData.error) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_api_error', message: containerData.error.message, code: containerData.error.code, user_id: session.user_id });
+    return c.json({ error: containerData.error.message ?? 'Container creation failed' }, 500);
+  }
+
+  const containerId = containerData.id;
+
+  // Save post record
+  const postId = newId();
+  await c.env.DB.prepare(`
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
+    VALUES (?, ?, ?, 'instagram', ?, 'processing', ?, ?)
+  `).bind(postId, session.user_id, accountId, caption, containerId, now()).run();
+
+  log(c, { type: 'event', event: 'instagram_upload_initiated', user_id: session.user_id, account_id: accountId, post_id: postId, container_id: containerId });
+  return c.json({ container_id: containerId, post_id: postId });
+});
+
+app.get('/api/instagram/status', async (c) => {
+  const session     = await getSession(c);
+  const containerId = c.req.query('container_id');
+  const accountId   = c.req.query('account_id');
+
+  if (!session)     return c.json({ error: 'not_authenticated' }, 401);
+  if (!containerId) return c.json({ error: 'Missing container_id' }, 400);
+
+  const account = await c.env.DB.prepare(
+    'SELECT access_token FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).bind(accountId, session.user_id).first();
+
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  const params = new URLSearchParams({ fields: 'status_code,status', access_token: account.access_token });
+  const res    = await fetch(`${IG_GRAPH}/${containerId}?${params}`);
+  const data   = await res.json();
+  return c.json(data);
+});
+
+app.post('/api/instagram/publish', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { container_id, account_id, post_id } = await c.req.json().catch(() => ({}));
+  if (!container_id || !account_id) return c.json({ error: 'Missing container_id or account_id' }, 400);
+
+  const account = await c.env.DB.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(account_id, session.user_id, 'instagram').first();
+
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  const res  = await fetch(`${IG_GRAPH}/${account.platform_user_id}/media_publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      creation_id:  container_id,
+      access_token: account.access_token,
+    }),
+  });
+  const data = await res.json();
+
+  if (!res.ok || data.error) {
+    log(c, { type: 'error', event: 'instagram_publish_failed', message: data.error?.message, code: data.error?.code, user_id: session.user_id, account_id });
+    return c.json({ error: data.error?.message ?? 'Failed to publish' }, 500);
+  }
+
+  if (post_id) {
+    await c.env.DB.prepare('UPDATE posts SET status = ?, publish_id = ? WHERE id = ? AND user_id = ?')
+      .bind('published', data.id ?? container_id, post_id, session.user_id).run();
+  }
+
+  log(c, { type: 'event', event: 'instagram_published', user_id: session.user_id, account_id, media_id: data.id, post_id: post_id ?? null });
+  return c.json({ ok: true, media_id: data.id, post_id });
 });
 
 // ── TikTok OAuth ──────────────────────────────────────────────────────────────
@@ -747,6 +1029,42 @@ async function fetchYouTubeChannel(accessToken) {
     },
     raw: data,
   };
+}
+
+async function exchangeInstagramCode(code, redirectUri, env) {
+  const body = new URLSearchParams({
+    client_id:     env.INSTAGRAM_APP_ID,
+    client_secret: env.INSTAGRAM_APP_SECRET,
+    grant_type:    'authorization_code',
+    redirect_uri:  redirectUri,
+    code,
+  });
+  const res = await fetch('https://api.instagram.com/oauth/access_token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    body.toString(),
+  });
+  if (!res.ok) throw new Error(`Instagram token error: ${await res.text()}`);
+  return res.json(); // { access_token, token_type, expires_in, permissions, user_id }
+}
+
+async function exchangeInstagramLongLived(shortToken, env) {
+  const params = new URLSearchParams({
+    grant_type:    'ig_exchange_token',
+    client_secret: env.INSTAGRAM_APP_SECRET,
+    access_token:  shortToken,
+  });
+  const res = await fetch(`https://graph.instagram.com/access_token?${params}`);
+  if (!res.ok) throw new Error(`Instagram long-lived token error: ${await res.text()}`);
+  return res.json(); // { access_token, token_type, expires_in }
+}
+
+async function fetchInstagramProfile(accessToken) {
+  const params = new URLSearchParams({ fields: 'id,name,profile_picture_url', access_token: accessToken });
+  const res    = await fetch(`https://graph.instagram.com/me?${params}`);
+  const data   = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data; // { id, name, profile_picture_url }
 }
 
 async function sendMagicLink(email, link, env) {
