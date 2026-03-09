@@ -582,6 +582,7 @@
     // State
     // ─────────────────────────────────────────────────────────────────────────
     let accounts = [];   // from /api/me
+    let user     = {};   // from /api/me
     let posts    = JSON.parse(localStorage.getItem("cp_posts") ?? "[]");
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -617,6 +618,7 @@
           : (data.open_id || data.display_name ? [data] : []);
 
         accounts = rawAccounts;
+        user     = data.user ?? {};
 
         renderAccountStrip();
         populateAccountSelector();
@@ -709,23 +711,15 @@
     // Render nav user info
     // ─────────────────────────────────────────────────────────────────────────
     function renderNavAccount() {
-      const navEl = document.getElementById("nav-account");
-      if (!accounts.length) {
-        navEl.innerHTML = `<a href="/auth/tiktok" class="btn btn-primary" style="font-size:0.8rem;padding:0.4rem 0.9rem">Connect TikTok</a>`;
-        return;
-      }
-      const acc     = accounts[0];
-      const name    = acc.display_name ?? "Account";
-      const avatar  = acc.avatar_url ?? "";
-      const initial = name.match(/[a-zA-Z0-9]/)?.[0]?.toUpperCase() ?? "T";
+      const navEl  = document.getElementById("nav-account");
+      const email  = user.email ?? "";
+      const initial = email ? email[0].toUpperCase() : "?";
 
-      const avatarHtml = avatar
-        ? `<img src="${escHtml(avatar)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'" />`
-        : `<span style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:#fff;flex-shrink:0">${escHtml(initial)}</span>`;
+      const avatarHtml = `<span style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:#fff;flex-shrink:0">${escHtml(initial)}</span>`;
 
       navEl.innerHTML = `
         ${avatarHtml}
-        <span style="font-size:0.85rem;color:var(--muted)">${escHtml(name)}</span>
+        <span style="font-size:0.85rem;color:var(--muted)">${escHtml(email)}</span>
         <a href="/auth/logout" style="font-size:0.8rem;color:var(--muted);margin-left:0.25rem" title="Log out">Log out</a>`;
     }
 
