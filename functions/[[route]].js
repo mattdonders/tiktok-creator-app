@@ -474,7 +474,7 @@ app.get('/api/me', async (c) => {
   const session = await getSession(c);
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
-  const user = await c.env.DB.prepare('SELECT id, email FROM users WHERE id = ?')
+  const user = await c.env.DB.prepare('SELECT id, email, display_name FROM users WHERE id = ?')
     .bind(session.user_id).first();
 
   const accounts = await c.env.DB.prepare(
@@ -482,6 +482,23 @@ app.get('/api/me', async (c) => {
   ).bind(session.user_id).all();
 
   return c.json({ user, accounts: accounts.results });
+});
+
+// ── API — profile ─────────────────────────────────────────────────────────────
+
+app.patch('/api/profile', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { display_name } = await c.req.json().catch(() => ({}));
+  if (typeof display_name !== 'string') return c.json({ error: 'Missing display_name' }, 400);
+
+  const trimmed = display_name.trim().slice(0, 50);
+  await c.env.DB.prepare('UPDATE users SET display_name = ? WHERE id = ?')
+    .bind(trimmed || null, session.user_id).run();
+
+  log(c, { type: 'event', event: 'profile_updated', user_id: session.user_id });
+  return c.json({ ok: true, display_name: trimmed || null });
 });
 
 // ── API — publish ─────────────────────────────────────────────────────────────
