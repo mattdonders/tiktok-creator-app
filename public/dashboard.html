@@ -1007,11 +1007,19 @@
     // ─────────────────────────────────────────────────────────────────────────
     // Disconnect
     // ─────────────────────────────────────────────────────────────────────────
-    function disconnect(accountId, accountName) {
+    async function disconnect(accountId, accountName) {
       const label = accountName ? `Disconnect "${accountName}" from CreatorPost?` : "Disconnect your TikTok account?";
-      if (confirm(label)) {
-        // Wire to real endpoint later; for now redirect to logout
-        window.location.href = `/auth/logout${accountId ? `?account_id=${encodeURIComponent(accountId)}` : ""}`;
+      if (!confirm(label)) return;
+      const res = await fetch('/api/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: accountId }),
+      });
+      if (res.ok) {
+        accounts = accounts.filter(a => (a.id ?? a.open_id) !== accountId);
+        renderAccountStrip();
+        populateAccountSelector();
+        renderNavAccount();
       }
     }
 

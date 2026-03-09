@@ -182,6 +182,22 @@ app.get('/callback', async (c) => {
   return c.redirect('/dashboard');
 });
 
+// ── API — disconnect account ──────────────────────────────────────────────────
+
+app.post('/api/disconnect', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { account_id } = await c.req.json().catch(() => ({}));
+  if (!account_id) return c.json({ error: 'Missing account_id' }, 400);
+
+  await c.env.DB.prepare(
+    'DELETE FROM connected_accounts WHERE id = ? AND user_id = ?'
+  ).bind(account_id, session.user_id).run();
+
+  return c.json({ ok: true });
+});
+
 // ── API — user ────────────────────────────────────────────────────────────────
 
 app.get('/api/me', async (c) => {
