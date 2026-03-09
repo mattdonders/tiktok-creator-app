@@ -247,7 +247,7 @@ app.get('/callback', async (c) => {
     return c.redirect('/dashboard?error=db_failed');
   }
 
-  log(c, { type: 'event', event: 'tiktok_connected', user_id: userId, open_id: tokenData.open_id });
+  log(c, { type: 'event', event: 'tiktok_connected', user_id: userId, open_id: tokenData.open_id, granted_scope: tokenData.scope ?? null });
   return c.redirect('/dashboard');
 });
 
