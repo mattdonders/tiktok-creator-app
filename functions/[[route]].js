@@ -457,8 +457,7 @@ app.post('/api/youtube/complete', async (c) => {
 
 // ── API — Instagram upload ─────────────────────────────────────────────────────
 
-const IG_GRAPH   = 'https://graph.instagram.com/v23.0';
-const IG_RUPLOAD = 'https://rupload.facebook.com/ig-api-upload';
+const IG_GRAPH = 'https://graph.instagram.com/v23.0';
 
 app.post('/api/instagram/upload', async (c) => {
   const session = await getSession(c);
@@ -492,30 +491,41 @@ app.post('/api/instagram/upload', async (c) => {
 
   if (videoSize > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 50MB)' }, 413);
 
-  // Step 1: Initialize rupload session
-  const initRes = await fetch(`${IG_RUPLOAD}/${igUserId}`, {
+  // Step 1: Initialize container via Graph API — returns container ID + pre-authorized upload URI
+  const initRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
     method: 'POST',
-    headers: {
-      'Authorization': `OAuth ${accessToken}`,
-      'Content-Type':  'application/octet-stream',
-      'file_size':     String(videoSize),
-    },
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      media_type:    'REELS',
+      upload_type:   'resumable',
+      caption,
+      share_to_feed: 'true',
+      access_token:  accessToken,
+    }),
   });
 
   if (!initRes.ok) {
     const errText = await initRes.text();
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'rupload_init_failed', status: initRes.status, message: errText, user_id: session.user_id });
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_failed', status: initRes.status, message: errText, user_id: session.user_id });
     return c.json({ error: 'Failed to initialize Instagram upload' }, 500);
   }
 
-  const { upload_id } = await initRes.json();
-  if (!upload_id) {
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_upload_id', user_id: session.user_id });
-    return c.json({ error: 'Instagram upload initialization failed (no upload_id)' }, 500);
+  const initData = await initRes.json();
+  if (initData.error) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_api_error', message: initData.error.message, code: initData.error.code, user_id: session.user_id });
+    return c.json({ error: initData.error.message ?? 'Instagram init failed' }, 500);
   }
 
-  // Step 2: Upload video bytes
-  const uploadRes = await fetch(`${IG_RUPLOAD}/${igUserId}/${upload_id}`, {
+  const containerId = initData.id;
+  const uploadUri   = initData.uri;
+
+  if (!uploadUri) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_upload_uri', raw: JSON.stringify(initData), user_id: session.user_id });
+    return c.json({ error: 'Instagram did not return an upload URI' }, 500);
+  }
+
+  // Step 2: Upload video bytes to the pre-authorized URI
+  const uploadRes = await fetch(uploadUri, {
     method: 'POST',
     headers: {
       'Authorization': `OAuth ${accessToken}`,
@@ -528,45 +538,11 @@ app.post('/api/instagram/upload', async (c) => {
 
   if (!uploadRes.ok) {
     const errText = await uploadRes.text();
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'rupload_put_failed', status: uploadRes.status, message: errText, user_id: session.user_id });
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'upload_bytes_failed', status: uploadRes.status, message: errText, user_id: session.user_id });
     return c.json({ error: 'Video upload to Instagram failed' }, 500);
   }
 
-  const uploadResult = await uploadRes.json();
-  const uploadHandle = uploadResult.h;
-  if (!uploadHandle) {
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_upload_handle', raw: JSON.stringify(uploadResult), user_id: session.user_id });
-    return c.json({ error: 'Instagram upload did not return a handle' }, 500);
-  }
-
-  // Step 3: Create media container
-  const containerRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      media_type:    'REELS',
-      upload_id:     uploadHandle,
-      caption,
-      share_to_feed: 'true',
-      access_token:  accessToken,
-    }),
-  });
-
-  if (!containerRes.ok) {
-    const errText = await containerRes.text();
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_failed', status: containerRes.status, message: errText, user_id: session.user_id });
-    return c.json({ error: 'Failed to create Instagram media container' }, 500);
-  }
-
-  const containerData = await containerRes.json();
-  if (containerData.error) {
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_api_error', message: containerData.error.message, code: containerData.error.code, user_id: session.user_id });
-    return c.json({ error: containerData.error.message ?? 'Container creation failed' }, 500);
-  }
-
-  const containerId = containerData.id;
-
-  // Save post record
+  // Save post record (container already created in step 1)
   const postId = newId();
   await c.env.DB.prepare(`
     INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
