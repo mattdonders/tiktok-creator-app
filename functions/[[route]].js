@@ -108,7 +108,16 @@ app.get('/auth/verify', async (c) => {
     'SELECT email, expires_at, used FROM magic_links WHERE token = ?'
   ).bind(token).first();
 
-  if (!link || link.used || link.expires_at < now()) {
+  if (!link) {
+    log(c, { type: 'error', event: 'magic_link_invalid', reason: 'not_found' });
+    return c.redirect('/login?error=expired');
+  }
+  if (link.used) {
+    log(c, { type: 'error', event: 'magic_link_invalid', reason: 'already_used', email: link.email });
+    return c.redirect('/login?error=expired');
+  }
+  if (link.expires_at < now()) {
+    log(c, { type: 'error', event: 'magic_link_invalid', reason: 'expired', email: link.email });
     return c.redirect('/login?error=expired');
   }
 
@@ -170,11 +179,20 @@ app.get('/callback', async (c) => {
   const state = c.req.query('state') ?? '';
   const error = c.req.query('error');
 
-  if (error) return c.redirect('/dashboard?error=' + encodeURIComponent(error));
-  if (!code)  return c.redirect('/dashboard?error=no_code');
+  if (error) {
+    log(c, { type: 'error', event: 'tiktok_oauth_error', reason: error });
+    return c.redirect('/dashboard?error=' + encodeURIComponent(error));
+  }
+  if (!code) {
+    log(c, { type: 'error', event: 'tiktok_oauth_error', reason: 'no_code' });
+    return c.redirect('/dashboard?error=no_code');
+  }
 
   const userId = state.split(':')[0];
-  if (!userId) return c.redirect('/dashboard?error=invalid_state');
+  if (!userId) {
+    log(c, { type: 'error', event: 'tiktok_oauth_error', reason: 'invalid_state' });
+    return c.redirect('/dashboard?error=invalid_state');
+  }
 
   const origin      = new URL(c.req.url).origin;
   const redirectUri = `${origin}/callback`;
@@ -185,6 +203,7 @@ app.get('/callback', async (c) => {
     tokenData = await exchangeTikTokCode(code, redirectUri, c.env);
   } catch (err) {
     console.error('Token exchange failed:', err);
+    log(c, { type: 'error', event: 'tiktok_token_exchange_failed', message: err.message, user_id: userId });
     return c.redirect('/dashboard?error=token_failed');
   }
 
@@ -292,7 +311,10 @@ app.post('/api/publish', async (c) => {
     'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ?'
   ).bind(accountId, session.user_id).first();
 
-  if (!account) return c.json({ error: 'Account not found' }, 404);
+  if (!account) {
+    log(c, { type: 'error', event: 'publish_failed', reason: 'account_not_found', account_id: accountId, user_id: session.user_id });
+    return c.json({ error: 'Account not found' }, 404);
+  }
 
   const videoBytes = await videoFile.arrayBuffer();
   const videoSize  = videoBytes.byteLength;
@@ -330,6 +352,7 @@ app.post('/api/publish', async (c) => {
   }
 
   if (!initRes.ok || initData.error?.code !== 'ok') {
+    log(c, { type: 'error', event: 'publish_failed', reason: 'tiktok_init_failed', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id, account_id: accountId });
     return c.json({ error: initData.error?.message ?? 'Failed to initialize upload', tiktok_raw: initData }, 500);
   }
 
@@ -346,6 +369,7 @@ app.post('/api/publish', async (c) => {
   });
 
   if (!uploadRes.ok) {
+    log(c, { type: 'error', event: 'publish_failed', reason: 'upload_put_failed', upload_status: uploadRes.status, user_id: session.user_id, account_id: accountId });
     return c.json({ error: 'Video upload failed' }, 500);
   }
 
