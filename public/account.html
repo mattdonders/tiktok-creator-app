@@ -76,12 +76,59 @@
       font-weight: 700;
     }
 
-    .connected-count {
+    .acct-row {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .acct-row:last-child { border-bottom: none; }
+
+    .acct-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+      overflow: hidden;
+    }
+    .acct-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    .acct-info { flex: 1; min-width: 0; }
+    .acct-name {
       font-size: 0.9rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .acct-handle {
+      font-size: 0.78rem;
       color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .connected-count strong { color: var(--text); }
+    .disconnect-btn {
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: none;
+      border: 1px solid var(--border);
+      padding: 0.3rem 0.65rem;
+      border-radius: 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .disconnect-btn:hover { color: #f87171; border-color: rgba(248,113,113,0.5); }
 
     .status-msg {
       font-size: 0.85rem;
@@ -153,11 +200,16 @@
 
     <!-- Connected accounts -->
     <div class="profile-card">
-      <div class="card-section-title">Connected accounts</div>
-      <div id="connected-summary" class="connected-count">Loading…</div>
-      <a href="/dashboard" style="display:inline-block;margin-top:1rem;font-size:0.85rem;color:var(--accent-light)">
-        Manage accounts →
-      </a>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.75rem">
+        <div class="card-section-title" style="margin-bottom:0">Connected accounts</div>
+        <div style="display:flex;gap:0.5rem">
+          <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem">+ TikTok</a>
+          <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
+        </div>
+      </div>
+      <div id="accounts-list">
+        <div style="color:var(--muted);font-size:0.9rem">Loading…</div>
+      </div>
     </div>
 
     <!-- Danger zone -->
@@ -178,40 +230,80 @@
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    let user = {};
+    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube' };
+    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)' };
+    const PLATFORM_COLOR = { tiktok: '#ccc', youtube: '#ff6b6b' };
+
+    let user     = {};
+    let accounts = [];
 
     async function loadProfile() {
       const res  = await fetch('/api/me');
       if (res.status === 401) { window.location.href = '/login'; return; }
       const data = await res.json();
 
-      user = data.user ?? {};
-      const accounts = data.accounts ?? [];
+      user     = data.user     ?? {};
+      accounts = data.accounts ?? [];
 
-      // Email
-      document.getElementById('field-email').textContent = user.email ?? '—';
+      document.getElementById('field-email').textContent    = user.email ?? '—';
+      document.getElementById('field-display-name').value   = user.display_name ?? '';
 
-      // Display name
-      document.getElementById('field-display-name').value = user.display_name ?? '';
+      renderNav();
+      renderAccounts();
+    }
 
-      // Nav
+    function renderNav() {
       const label   = user.display_name || user.email || '';
       const initial = label ? label[0].toUpperCase() : '?';
       document.getElementById('nav-account').innerHTML = `
         <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:#fff;flex-shrink:0">${escHtml(initial)}</span>
-        <span style="font-size:0.85rem;color:var(--muted)">${escHtml(label)}</span>
+        <a href="/account" style="font-size:0.85rem;color:var(--muted);text-decoration:none">${escHtml(label)}</a>
         <a href="/auth/logout" style="font-size:0.8rem;color:var(--muted);margin-left:0.25rem">Log out</a>`;
+    }
 
-      // Connected accounts summary
-      const byPlatform = accounts.reduce((acc, a) => {
-        acc[a.platform] = (acc[a.platform] ?? 0) + 1;
-        return acc;
-      }, {});
-      const summary = Object.entries(byPlatform)
-        .map(([p, n]) => `<strong>${n}</strong> ${p.charAt(0).toUpperCase() + p.slice(1)}`)
-        .join(' · ');
-      document.getElementById('connected-summary').innerHTML =
-        accounts.length ? summary : 'No accounts connected yet.';
+    function renderAccounts() {
+      const list = document.getElementById('accounts-list');
+      if (!accounts.length) {
+        list.innerHTML = `<div style="color:var(--muted);font-size:0.9rem;padding:0.25rem 0">No accounts connected yet.</div>`;
+        return;
+      }
+      list.innerHTML = accounts.map(acc => {
+        const platform  = acc.platform ?? 'tiktok';
+        const name      = escHtml(acc.display_name ?? PLATFORM_LABEL[platform] ?? 'Account');
+        const handle    = acc.platform_user_id ? `@${escHtml(acc.platform_user_id)}` : '';
+        const initial   = (acc.display_name ?? 'A').match(/[a-zA-Z0-9]/)?.[0]?.toUpperCase() ?? 'A';
+        const avatar    = acc.avatar_url ?? '';
+        const id        = escHtml(acc.id ?? '');
+        const platLabel = escHtml(PLATFORM_LABEL[platform] ?? platform);
+        const platColor = PLATFORM_COLOR[platform] ?? '#888';
+        const platBg    = PLATFORM_BG[platform]    ?? 'rgba(255,255,255,0.08)';
+        const avatarHtml = avatar
+          ? `<img src="${escHtml(avatar)}" alt="${name}" onerror="this.style.display='none'" />`
+          : initial;
+        return `
+          <div class="acct-row">
+            <div class="acct-avatar">${avatarHtml}</div>
+            <div class="acct-info">
+              <div class="acct-name">${name}</div>
+              ${handle ? `<div class="acct-handle">${handle}</div>` : ''}
+            </div>
+            <span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:4px;padding:0.2rem 0.5rem;flex-shrink:0">${platLabel}</span>
+            <button class="disconnect-btn" onclick="disconnect('${id}', '${name}')">Disconnect</button>
+          </div>`;
+      }).join('');
+    }
+
+    async function disconnect(accountId, accountName) {
+      if (!confirm(`Disconnect "${accountName}" from CreatorPost?`)) return;
+      const res = await fetch('/api/disconnect', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ account_id: accountId }),
+      });
+      if (res.ok) {
+        accounts = accounts.filter(a => a.id !== accountId);
+        renderAccounts();
+      }
     }
 
     async function saveProfile() {
@@ -232,15 +324,9 @@
 
       if (res.ok) {
         user.display_name = data.display_name;
-        statusEl.textContent  = 'Saved!';
-        statusEl.className    = 'status-msg success';
-        // Update nav label
-        const label   = user.display_name || user.email || '';
-        const initial = label ? label[0].toUpperCase() : '?';
-        document.getElementById('nav-account').innerHTML = `
-          <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:#fff;flex-shrink:0">${escHtml(initial)}</span>
-          <span style="font-size:0.85rem;color:var(--muted)">${escHtml(label)}</span>
-          <a href="/auth/logout" style="font-size:0.8rem;color:var(--muted);margin-left:0.25rem">Log out</a>`;
+        statusEl.textContent = 'Saved!';
+        statusEl.className   = 'status-msg success';
+        renderNav();
       } else {
         statusEl.textContent = data.error ?? 'Failed to save.';
         statusEl.className   = 'status-msg error';

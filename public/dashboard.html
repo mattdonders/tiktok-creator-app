@@ -29,108 +29,18 @@
       color: var(--muted);
     }
 
-    /* ── Account strip ── */
-    .accounts-wrap {
-      margin-bottom: 2rem;
-    }
-    .account-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      margin-bottom: 0.75rem;
-    }
-    .account-strip {
+    /* ── Compact accounts bar ── */
+    .accounts-bar {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.75rem;
+      padding: 0.65rem 1rem;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 0.9rem 1.25rem;
-      transition: border-color 0.15s;
+      border-radius: 10px;
+      margin-bottom: 1.75rem;
+      flex-wrap: wrap;
     }
-    .account-strip:hover { border-color: #2a2a2a; }
-
-    .account-avatar-wrap {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: var(--accent);
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #fff;
-      overflow: hidden;
-    }
-    .account-avatar-wrap img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .account-info { flex: 1; min-width: 0; }
-    .account-name {
-      font-weight: 600;
-      font-size: 0.95rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .account-handle {
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-top: 0.05rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .account-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      font-size: 0.75rem;
-      color: #4ade80;
-      font-weight: 500;
-    }
-    .account-badge::before {
-      content: "";
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #4ade80;
-      flex-shrink: 0;
-    }
-    .disconnect-btn {
-      font-size: 0.8rem;
-      color: var(--muted);
-      background: none;
-      border: 1px solid var(--border);
-      padding: 0.35rem 0.75rem;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
-      flex-shrink: 0;
-      white-space: nowrap;
-    }
-    .disconnect-btn:hover { color: var(--text); border-color: #444; }
-
-    /* No-accounts CTA */
-    .no-accounts-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      background: var(--surface);
-      border: 1px dashed var(--border);
-      border-radius: 12px;
-      padding: 2rem;
-      text-align: center;
-      margin-bottom: 2rem;
-    }
-    .no-accounts-card p { color: var(--muted); font-size: 0.9rem; margin: 0; }
 
     /* ── Grid ── */
     .dash-grid {
@@ -334,6 +244,12 @@
       cursor: pointer;
       user-select: none;
       transition: border-color 0.15s;
+      /* prevent .form-group label styles from bleeding in */
+      text-transform: none;
+      letter-spacing: normal;
+      font-weight: 400;
+      color: var(--text);
+      margin-bottom: 0;
     }
     .account-check-row:hover { border-color: #333; }
     .account-check-row.selected { border-color: var(--accent); background: rgba(124,58,237,0.06); }
@@ -472,27 +388,13 @@
 
   <div class="dash-layout">
 
-    <!-- ── Connected accounts strip ── -->
-    <div id="accounts-wrap" class="accounts-wrap" style="display:none">
-      <div class="section-header">
-        <span class="section-heading">Connected accounts</span>
-        <div style="display:flex;gap:0.5rem">
-          <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.8rem;padding:0.35rem 0.85rem">+ TikTok</a>
-          <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.8rem;padding:0.35rem 0.85rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
-        </div>
-      </div>
-      <div class="account-list" id="account-list">
-        <!-- populated by JS -->
-      </div>
-    </div>
-
-    <!-- No accounts CTA (shown when accounts array is empty) -->
-    <div id="no-accounts-card" class="no-accounts-card" style="display:none">
-      <div style="font-size:2.5rem">📱</div>
-      <p><strong style="color:var(--text)">No accounts connected</strong><br>Connect a platform to start publishing videos.</p>
-      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;justify-content:center">
-        <a href="/auth/tiktok" class="btn btn-primary">Connect TikTok</a>
-        <a href="/auth/youtube" class="btn btn-outline" style="color:#ff6b6b;border-color:rgba(255,107,107,0.4)">Connect YouTube</a>
+    <!-- ── Compact accounts bar ── -->
+    <div class="accounts-bar">
+      <span id="accounts-bar-label" style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+        <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem">+ TikTok</a>
+        <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
+        <a href="/account" style="font-size:0.8rem;color:var(--muted);padding:0 0.25rem;white-space:nowrap">Manage →</a>
       </div>
     </div>
 
@@ -655,34 +557,35 @@
         accounts = rawAccounts;
         user     = data.user ?? {};
 
-        renderAccountStrip();
+        renderAccountBar();
         renderAccountCheckboxes();
         renderNavAccount();
 
       } catch {
         // Network error — stay on dashboard, show empty state
-        renderAccountStrip();
+        renderAccountBar();
         renderAccountCheckboxes();
       }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Render connected accounts strip
+    // Compact accounts bar
     // ─────────────────────────────────────────────────────────────────────────
-    function renderAccountStrip() {
-      const wrap     = document.getElementById("accounts-wrap");
-      const noCard   = document.getElementById("no-accounts-card");
-      const list     = document.getElementById("account-list");
-
+    function renderAccountBar() {
+      const label = document.getElementById("accounts-bar-label");
       if (!accounts.length) {
-        wrap.style.display   = "none";
-        noCard.style.display = "flex";
+        label.innerHTML = '<span>No accounts connected</span>';
         return;
       }
-
-      noCard.style.display  = "none";
-      wrap.style.display    = "block";
-      list.innerHTML = accounts.map(acc => buildAccountRow(acc)).join("");
+      const byPlatform = accounts.reduce((m, a) => {
+        const p = a.platform ?? 'tiktok';
+        m[p] = (m[p] ?? 0) + 1;
+        return m;
+      }, {});
+      const parts = Object.entries(byPlatform).map(([p, n]) =>
+        `<span style="color:${PLATFORM_COLOR[p] ?? '#888'};font-weight:600">${n} ${PLATFORM_LABEL[p] ?? p}</span>`
+      );
+      label.innerHTML = parts.join(' · ') + '<span style="color:var(--muted)"> connected</span>';
     }
 
     const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube' };
@@ -692,33 +595,6 @@
       tiktok:  { public: 'PUBLIC_TO_EVERYONE', unlisted: 'SELF_ONLY', private: 'SELF_ONLY'  },
       youtube: { public: 'public',             unlisted: 'unlisted',  private: 'private'     },
     };
-
-    function buildAccountRow(acc) {
-      const platform = acc.platform ?? 'tiktok';
-      const name     = escHtml(acc.display_name ?? PLATFORM_LABEL[platform] ?? 'Account');
-      const handle   = acc.platform_user_id ? `@${escHtml(acc.platform_user_id)}` : "";
-      const initial  = (acc.display_name ?? "A").match(/[a-zA-Z0-9]/)?.[0]?.toUpperCase() ?? "A";
-      const avatar   = acc.avatar_url ?? "";
-      const id       = escHtml(acc.id ?? "");
-      const platLabel = escHtml(PLATFORM_LABEL[platform] ?? platform);
-      const platColor = PLATFORM_COLOR[platform] ?? '#888';
-
-      const avatarHtml = avatar
-        ? `<img src="${escHtml(avatar)}" alt="${name}" onerror="this.style.display='none';this.previousElementSibling.style.display='flex'" /><span style="display:none;width:100%;height:100%;align-items:center;justify-content:center">${initial}</span>`
-        : initial;
-
-      return `
-        <div class="account-strip">
-          <div class="account-avatar-wrap">${avatarHtml}</div>
-          <div class="account-info">
-            <div class="account-name">${name}</div>
-            ${handle ? `<div class="account-handle">${handle}</div>` : ""}
-          </div>
-          <span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${PLATFORM_BG[platform]??'rgba(255,255,255,0.08)'};border-radius:4px;padding:0.2rem 0.5rem">${platLabel}</span>
-          <span class="account-badge">Connected</span>
-          <button class="disconnect-btn" onclick="disconnect('${id}', '${name}')">Disconnect</button>
-        </div>`;
-    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Account checkboxes in upload form
@@ -1174,7 +1050,7 @@
       });
       if (res.ok) {
         accounts = accounts.filter(a => (a.id ?? a.open_id) !== accountId);
-        renderAccountStrip();
+        renderAccountBar();
         renderAccountCheckboxes();
         renderNavAccount();
       }
