@@ -2,6 +2,9 @@ name = "creatorpost"
 pages_build_output_dir = "public"
 compatibility_date = "2024-09-02"
 
+[build]
+command = "npm install"
+
 [[d1_databases]]
 binding     = "DB"
 database_name = "creatorpost"
