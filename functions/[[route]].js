@@ -8,6 +8,49 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 
 const app = new Hono();
 
+// ── Axiom logging ─────────────────────────────────────────────────────────────
+
+function log(c, events) {
+  if (!c.env.AXIOM_TOKEN || !c.env.AXIOM_DATASET) return;
+  const body = (Array.isArray(events) ? events : [events])
+    .map(e => JSON.stringify({ _time: new Date().toISOString(), ...e }))
+    .join('\n');
+  const p = fetch(`https://api.axiom.co/v1/datasets/${c.env.AXIOM_DATASET}/ingest`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${c.env.AXIOM_TOKEN}`,
+      'Content-Type': 'application/x-ndjson',
+    },
+    body,
+  });
+  c.executionCtx.waitUntil(p);
+}
+
+// Request logging middleware
+app.use('*', async (c, next) => {
+  const start = Date.now();
+  await next();
+  log(c, {
+    type:     'request',
+    method:   c.req.method,
+    path:     new URL(c.req.url).pathname,
+    status:   c.res.status,
+    duration: Date.now() - start,
+    country:  c.req.raw.cf?.country ?? null,
+  });
+});
+
+// Error handler
+app.onError((err, c) => {
+  log(c, {
+    type:    'error',
+    message: err.message,
+    stack:   err.stack,
+    path:    new URL(c.req.url).pathname,
+  });
+  return c.json({ error: 'Internal Server Error' }, 500);
+});
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function newId() { return crypto.randomUUID(); }
@@ -51,6 +94,7 @@ app.post('/auth/send', async (c) => {
   const link = `${new URL(c.req.url).origin}/auth/verify?token=${token}`;
 
   await sendMagicLink(email, link, c.env);
+  log(c, { type: 'event', event: 'magic_link_sent', email });
 
   return c.json({ ok: true });
 });
@@ -77,6 +121,7 @@ app.get('/auth/verify', async (c) => {
     await c.env.DB.prepare('INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)')
       .bind(id, link.email, now()).run();
     user = { id };
+    log(c, { type: 'event', event: 'user_created', email: link.email });
   }
 
   // Create session
@@ -176,9 +221,11 @@ app.get('/callback', async (c) => {
   ).run();
   } catch (err) {
     console.error('DB upsert failed:', err);
+    log(c, { type: 'error', event: 'tiktok_connect_failed', message: err.message });
     return c.redirect('/dashboard?error=db_failed');
   }
 
+  log(c, { type: 'event', event: 'tiktok_connected', user_id: userId, open_id: tokenData.open_id });
   return c.redirect('/dashboard');
 });
 
