@@ -1,25 +1,12 @@
 # CreatorPost — TODO
 
-## 🔴 Immediate (unblock v2 launch)
+## 🔴 Immediate
 
-- [ ] Create Cloudflare Pages project for v2 branch
-  - Connect `tiktok-creator-app` repo, branch: `v2`
-  - Build command: *(blank)*, output dir: `public`
-- [ ] Bind D1 database in Pages settings
-  - Settings → Functions → D1 bindings → variable `DB` → database `creatorpost`
-- [ ] Set environment variables in Pages dashboard
-  - `TIKTOK_CLIENT_ID`, `TIKTOK_CLIENT_SECRET`, `RESEND_API_KEY`
-- [ ] Sign up for Resend (resend.com) and get API key
-  - Verify sending domain via Cloudflare DNS (2 min)
-- [ ] Test full v2 flow end-to-end:
-  - Sign up via magic link → connect TikTok → upload video
-
-## 🟡 TikTok API
-
-- [ ] Wait for TikTok production app review (submitted — 3–7 business days)
-- [ ] Once approved: update `TIKTOK_CLIENT_ID` / `TIKTOK_CLIENT_SECRET` in Cloudflare env
-- [ ] Test production video upload with real tokens
+- [ ] Test full upload flow end-to-end with production TikTok credentials
+- [ ] Verify Axiom logs are appearing after redeploy
+- [ ] Reconnect TikTok account (to pull real display_name/avatar now that profile scope works)
 - [ ] Implement token refresh (TikTok tokens expire; need cron to refresh)
+- [ ] Wait for TikTok revision review (added scopes + second redirect URI)
 
 ## 🟠 Platform Expansion (v2.1)
 
@@ -67,7 +54,15 @@
 - [x] Fix disconnect button (server-side cookie clear via `/api/logout`)
 - [x] Add inbox/draft fallback for TikTok direct post failures
 - [x] Submit TikTok production app for review
+- [x] TikTok production app APPROVED
 - [x] Scaffold v2 architecture: Hono + D1 + magic link auth + multi-account
 - [x] Create D1 database `creatorpost` and apply schema
-- [x] Remove node_modules from git, clean up old function files
-- [x] Push v2 branch to GitHub
+- [x] Merge v2 → main, deploy to creatorpost.app
+- [x] Set up Resend + verify creatorpost.app sending domain
+- [x] Magic link auth working end-to-end
+- [x] TikTok OAuth working with production credentials
+- [x] Fix disconnect UX (removes account only, no logout)
+- [x] Add Axiom structured logging
+- [x] Set up social accounts @creatorpostapp (TikTok, Instagram, Twitter, YouTube)
+- [x] Write branding content (docs/branding.md)
+- [x] Write HeyGen promo video scripts (docs/heygen-video-prompt.md)
