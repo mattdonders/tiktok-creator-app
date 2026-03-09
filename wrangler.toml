@@ -7,7 +7,12 @@ binding     = "DB"
 database_name = "creatorpost"
 database_id = "e848bad2-3485-45f5-8ecb-5e90924cc885"
 
+[[r2_buckets]]
+binding    = "MEDIA_BUCKET"
+bucket_name = "creatorpost-media"
+
 # Secrets — set in Cloudflare Pages dashboard (Settings → Environment variables):
 #   TIKTOK_CLIENT_ID
 #   TIKTOK_CLIENT_SECRET
 #   RESEND_API_KEY
+#   R2_PUBLIC_URL  (public URL of the creatorpost-media R2 bucket)

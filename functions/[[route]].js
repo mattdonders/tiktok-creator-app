@@ -459,6 +459,18 @@ app.post('/api/youtube/complete', async (c) => {
 
 const IG_GRAPH = 'https://graph.instagram.com/v23.0';
 
+// Best-effort cleanup of expired R2 temp videos (called opportunistically)
+async function cleanupExpiredR2(bucket) {
+  try {
+    const listed = await bucket.list({ prefix: 'ig-temp/' });
+    const expired = listed.objects.filter(obj => {
+      const at = parseInt(obj.customMetadata?.cleanup_at ?? '0', 10);
+      return at > 0 && at < Date.now();
+    });
+    if (expired.length) await Promise.all(expired.map(obj => bucket.delete(obj.key)));
+  } catch { /* best-effort */ }
+}
+
 app.post('/api/instagram/upload', async (c) => {
   const session = await getSession(c);
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
@@ -486,23 +498,50 @@ app.post('/api/instagram/upload', async (c) => {
 
   const accessToken = account.access_token;
   const igUserId    = account.platform_user_id;
-  const videoBytes  = await videoFile.arrayBuffer();
-  const videoSize   = videoBytes.byteLength;
 
   if (!igUserId) {
     log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_ig_user_id', account_id: accountId, user_id: session.user_id });
     return c.json({ error: 'Instagram user ID not found — try reconnecting your account' }, 400);
   }
 
+  const videoBytes = await videoFile.arrayBuffer();
+  const videoSize  = videoBytes.byteLength;
+
   if (videoSize > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 50MB)' }, 413);
 
-  // Step 1: Initialize container via Graph API — returns container ID + pre-authorized upload URI
+  if (!c.env.MEDIA_BUCKET || !c.env.R2_PUBLIC_URL) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'storage_not_configured', user_id: session.user_id });
+    return c.json({ error: 'Storage not configured — contact support' }, 503);
+  }
+
+  // Opportunistic cleanup of expired temp videos
+  c.executionCtx.waitUntil(cleanupExpiredR2(c.env.MEDIA_BUCKET));
+
+  // Step 1: Upload video to R2 for temporary hosting
+  const r2Key     = `ig-temp/${newId()}/${videoFile.name || 'video.mp4'}`;
+  const cleanupAt = String(Date.now() + 24 * 60 * 60 * 1000); // 24h TTL
+
+  try {
+    await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
+      httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
+      customMetadata: { cleanup_at: cleanupAt },
+    });
+  } catch (err) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'r2_put_failed', message: err.message, user_id: session.user_id });
+    return c.json({ error: 'Failed to store video for upload' }, 500);
+  }
+
+  const videoUrl = `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
+
+  // Step 2: Create Reels container with video_url
+  // NOTE: video_url is the only supported method for Instagram Login tokens.
+  // upload_type=resumable and rupload.facebook.com both require Facebook Login tokens.
   const initRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       media_type:    'REELS',
-      upload_type:   'resumable',
+      video_url:     videoUrl,
       caption,
       share_to_feed: 'true',
       access_token:  accessToken,
@@ -511,43 +550,21 @@ app.post('/api/instagram/upload', async (c) => {
 
   if (!initRes.ok) {
     const errText = await initRes.text();
+    c.executionCtx.waitUntil(c.env.MEDIA_BUCKET.delete(r2Key));
     log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_failed', status: initRes.status, message: errText, ig_user_id: igUserId, user_id: session.user_id });
     return c.json({ error: 'Failed to initialize Instagram upload' }, 500);
   }
 
   const initData = await initRes.json();
   if (initData.error) {
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_api_error', message: initData.error.message, code: initData.error.code, user_id: session.user_id });
+    c.executionCtx.waitUntil(c.env.MEDIA_BUCKET.delete(r2Key));
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_api_error', message: initData.error.message, code: initData.error.code, ig_user_id: igUserId, user_id: session.user_id });
     return c.json({ error: initData.error.message ?? 'Instagram init failed' }, 500);
   }
 
   const containerId = initData.id;
-  const uploadUri   = initData.uri;
 
-  if (!uploadUri) {
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_upload_uri', raw: JSON.stringify(initData), user_id: session.user_id });
-    return c.json({ error: 'Instagram did not return an upload URI' }, 500);
-  }
-
-  // Step 2: Upload video bytes to the pre-authorized URI
-  const uploadRes = await fetch(uploadUri, {
-    method: 'POST',
-    headers: {
-      'Authorization': `OAuth ${accessToken}`,
-      'Content-Type':  'application/octet-stream',
-      'file_size':     String(videoSize),
-      'offset':        '0',
-    },
-    body: videoBytes,
-  });
-
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'upload_bytes_failed', status: uploadRes.status, message: errText, user_id: session.user_id });
-    return c.json({ error: 'Video upload to Instagram failed' }, 500);
-  }
-
-  // Save post record (container already created in step 1)
+  // Save post record
   const postId = newId();
   await c.env.DB.prepare(`
     INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
@@ -555,7 +572,7 @@ app.post('/api/instagram/upload', async (c) => {
   `).bind(postId, session.user_id, accountId, caption, containerId, now()).run();
 
   log(c, { type: 'event', event: 'instagram_upload_initiated', user_id: session.user_id, account_id: accountId, post_id: postId, container_id: containerId });
-  return c.json({ container_id: containerId, post_id: postId });
+  return c.json({ container_id: containerId, post_id: postId, r2_key: r2Key });
 });
 
 app.get('/api/instagram/status', async (c) => {
@@ -582,7 +599,7 @@ app.post('/api/instagram/publish', async (c) => {
   const session = await getSession(c);
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
-  const { container_id, account_id, post_id } = await c.req.json().catch(() => ({}));
+  const { container_id, account_id, post_id, r2_key } = await c.req.json().catch(() => ({}));
   if (!container_id || !account_id) return c.json({ error: 'Missing container_id or account_id' }, 400);
 
   const account = await c.env.DB.prepare(
@@ -604,6 +621,11 @@ app.post('/api/instagram/publish', async (c) => {
   if (!res.ok || data.error) {
     log(c, { type: 'error', event: 'instagram_publish_failed', message: data.error?.message, code: data.error?.code, user_id: session.user_id, account_id });
     return c.json({ error: data.error?.message ?? 'Failed to publish' }, 500);
+  }
+
+  // Clean up temp R2 video now that it's been ingested by Instagram
+  if (r2_key && c.env.MEDIA_BUCKET) {
+    c.executionCtx.waitUntil(c.env.MEDIA_BUCKET.delete(r2_key));
   }
 
   if (post_id) {

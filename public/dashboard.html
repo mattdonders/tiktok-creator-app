@@ -948,7 +948,7 @@
         throw new Error(msg);
       }
 
-      const { container_id, post_id } = data;
+      const { container_id, post_id, r2_key } = data;
       const accName = acc.display_name ?? 'Instagram';
 
       if (singleUpload) showStatus('Processing Instagram video… (this may take a moment)');
@@ -961,7 +961,7 @@
       const pubRes  = await fetch('/api/instagram/publish', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ container_id, account_id: acc.id, post_id }),
+        body:    JSON.stringify({ container_id, account_id: acc.id, post_id, r2_key }),
       });
       const pubData = await pubRes.json();
 
