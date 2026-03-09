@@ -144,10 +144,16 @@ app.get('/callback', async (c) => {
   }
 
   // Fetch profile
-  const profile = await fetchTikTokProfile(tokenData.access_token);
+  let profile = {};
+  try {
+    profile = await fetchTikTokProfile(tokenData.access_token);
+  } catch (err) {
+    console.error('Profile fetch failed:', err);
+  }
 
   // Upsert connected account
   const accountId = newId();
+  try {
   await c.env.DB.prepare(`
     INSERT INTO connected_accounts
       (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, refresh_token, token_expires_at, created_at)
@@ -168,6 +174,10 @@ app.get('/callback', async (c) => {
     tokenData.expires_in ? now() + tokenData.expires_in : null,
     now()
   ).run();
+  } catch (err) {
+    console.error('DB upsert failed:', err);
+    return c.redirect('/dashboard?error=db_failed');
+  }
 
   return c.redirect('/dashboard');
 });
