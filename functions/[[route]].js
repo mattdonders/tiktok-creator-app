@@ -148,6 +148,203 @@ app.get('/auth/logout', (c) => {
   return c.redirect('/login');
 });
 
+// ── YouTube OAuth ─────────────────────────────────────────────────────────────
+
+app.get('/auth/youtube', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+
+  if (!c.env.GOOGLE_CLIENT_ID) return c.text('YouTube not configured', 503);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/youtube`;
+  const state       = `${session.user_id}:${newId()}`;
+
+  const params = new URLSearchParams({
+    client_id:              c.env.GOOGLE_CLIENT_ID,
+    redirect_uri:           redirectUri,
+    response_type:          'code',
+    scope:                  'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
+    access_type:            'offline',
+    prompt:                 'consent',
+    state,
+    include_granted_scopes: 'true',
+  });
+
+  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+app.get('/callback/youtube', async (c) => {
+  const code  = c.req.query('code');
+  const state = c.req.query('state') ?? '';
+  const error = c.req.query('error');
+
+  if (error) {
+    log(c, { type: 'error', event: 'youtube_oauth_error', reason: error });
+    return c.redirect('/dashboard?error=' + encodeURIComponent(error));
+  }
+  if (!code) {
+    log(c, { type: 'error', event: 'youtube_oauth_error', reason: 'no_code' });
+    return c.redirect('/dashboard?error=no_code');
+  }
+
+  const userId = state.split(':')[0];
+  if (!userId) {
+    log(c, { type: 'error', event: 'youtube_oauth_error', reason: 'invalid_state' });
+    return c.redirect('/dashboard?error=invalid_state');
+  }
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/youtube`;
+
+  let tokenData;
+  try {
+    tokenData = await exchangeGoogleCode(code, redirectUri, c.env);
+  } catch (err) {
+    log(c, { type: 'error', event: 'youtube_token_exchange_failed', message: err.message, user_id: userId });
+    return c.redirect('/dashboard?error=token_failed');
+  }
+
+  let channel = {};
+  try {
+    const result = await fetchYouTubeChannel(tokenData.access_token);
+    channel = result.channel;
+    log(c, { type: 'event', event: 'youtube_channel_fetched', user_id: userId, channel_title: channel.title ?? null });
+  } catch (err) {
+    log(c, { type: 'error', event: 'youtube_channel_fetch_failed', message: err.message, user_id: userId });
+  }
+
+  const accountId  = newId();
+  const expiresAt  = tokenData.expires_in ? now() + tokenData.expires_in : null;
+
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO connected_accounts
+        (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, refresh_token, token_expires_at, created_at)
+      VALUES (?, ?, 'youtube', ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, platform, platform_user_id) DO UPDATE SET
+        display_name     = excluded.display_name,
+        avatar_url       = excluded.avatar_url,
+        access_token     = excluded.access_token,
+        refresh_token    = CASE WHEN excluded.refresh_token IS NOT NULL THEN excluded.refresh_token ELSE connected_accounts.refresh_token END,
+        token_expires_at = excluded.token_expires_at
+    `).bind(
+      accountId, userId,
+      channel.id ?? null,
+      channel.title ?? null,
+      channel.avatar_url ?? null,
+      tokenData.access_token,
+      tokenData.refresh_token ?? null,
+      expiresAt,
+      now()
+    ).run();
+  } catch (err) {
+    log(c, { type: 'error', event: 'youtube_connect_failed', message: err.message, user_id: userId });
+    return c.redirect('/dashboard?error=db_failed');
+  }
+
+  log(c, { type: 'event', event: 'youtube_connected', user_id: userId, channel_id: channel.id ?? null, granted_scope: tokenData.scope ?? null });
+  return c.redirect('/dashboard');
+});
+
+// ── API — YouTube upload session ───────────────────────────────────────────────
+
+app.post('/api/youtube/upload-session', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { account_id, title, description = '', privacy_status = 'private', file_size, mime_type = 'video/mp4' } = await c.req.json().catch(() => ({}));
+
+  if (!account_id || !title || !file_size) {
+    return c.json({ error: 'Missing required fields: account_id, title, file_size' }, 400);
+  }
+
+  const account = await c.env.DB.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(account_id, session.user_id, 'youtube').first();
+
+  if (!account) {
+    log(c, { type: 'error', event: 'youtube_upload_failed', reason: 'account_not_found', account_id, user_id: session.user_id });
+    return c.json({ error: 'Account not found' }, 404);
+  }
+
+  // Refresh access token if expired
+  let accessToken = account.access_token;
+  if (account.token_expires_at && account.token_expires_at < now() + 60) {
+    try {
+      const refreshed = await refreshGoogleToken(account.refresh_token, c.env);
+      accessToken     = refreshed.access_token;
+      await c.env.DB.prepare(
+        'UPDATE connected_accounts SET access_token = ?, token_expires_at = ? WHERE id = ?'
+      ).bind(accessToken, now() + refreshed.expires_in, account_id).run();
+    } catch (err) {
+      log(c, { type: 'error', event: 'youtube_token_refresh_failed', message: err.message, account_id });
+      return c.json({ error: 'token_revoked' }, 401);
+    }
+  }
+
+  const metadata = {
+    snippet: {
+      title:       title.slice(0, 100),
+      description: description.slice(0, 5000),
+      categoryId:  '22',
+    },
+    status: {
+      privacyStatus:              privacy_status,
+      selfDeclaredMadeForKids:    false,
+    },
+  };
+
+  const initRes = await fetch(
+    'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+    {
+      method:  'POST',
+      headers: {
+        'Authorization':           `Bearer ${accessToken}`,
+        'Content-Type':            'application/json; charset=UTF-8',
+        'X-Upload-Content-Length': String(file_size),
+        'X-Upload-Content-Type':   mime_type,
+      },
+      body: JSON.stringify(metadata),
+    }
+  );
+
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    log(c, { type: 'error', event: 'youtube_upload_failed', reason: 'init_failed', status: initRes.status, message: errText, user_id: session.user_id });
+    if (initRes.status === 401) return c.json({ error: 'token_revoked' }, 401);
+    return c.json({ error: 'Failed to initialize YouTube upload' }, 500);
+  }
+
+  const uploadUrl = initRes.headers.get('Location');
+
+  // Save post record
+  const postId = newId();
+  await c.env.DB.prepare(`
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, created_at)
+    VALUES (?, ?, ?, 'youtube', ?, 'processing', ?)
+  `).bind(postId, session.user_id, account_id, title, now()).run();
+
+  log(c, { type: 'event', event: 'youtube_upload_initiated', user_id: session.user_id, account_id, post_id: postId });
+  return c.json({ upload_url: uploadUrl, post_id: postId });
+});
+
+// POST /api/youtube/complete — called by browser after direct upload finishes
+app.post('/api/youtube/complete', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { post_id, video_id } = await c.req.json().catch(() => ({}));
+  if (!post_id) return c.json({ error: 'Missing post_id' }, 400);
+
+  await c.env.DB.prepare(
+    'UPDATE posts SET status = ?, publish_id = ? WHERE id = ? AND user_id = ?'
+  ).bind('published', video_id ?? null, post_id, session.user_id).run();
+
+  log(c, { type: 'event', event: 'youtube_upload_complete', user_id: session.user_id, post_id, video_id: video_id ?? null });
+  return c.json({ ok: true });
+});
+
 // ── TikTok OAuth ──────────────────────────────────────────────────────────────
 
 // GET /auth/tiktok — redirect to TikTok
@@ -474,6 +671,58 @@ async function fetchTikTokProfile(accessToken) {
   );
   const data = await res.json();
   return { user: data.data?.user ?? {}, raw: data };
+}
+
+async function exchangeGoogleCode(code, redirectUri, env) {
+  const params = new URLSearchParams({
+    code,
+    client_id:     env.GOOGLE_CLIENT_ID,
+    client_secret: env.GOOGLE_CLIENT_SECRET,
+    redirect_uri:  redirectUri,
+    grant_type:    'authorization_code',
+  });
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    params.toString(),
+  });
+  if (!res.ok) throw new Error(`Google token error: ${await res.text()}`);
+  return res.json();
+}
+
+async function refreshGoogleToken(refreshToken, env) {
+  const params = new URLSearchParams({
+    client_id:     env.GOOGLE_CLIENT_ID,
+    client_secret: env.GOOGLE_CLIENT_SECRET,
+    refresh_token: refreshToken,
+    grant_type:    'refresh_token',
+  });
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    params.toString(),
+  });
+  if (!res.ok) throw new Error(`Google refresh error: ${await res.text()}`);
+  return res.json();
+}
+
+async function fetchYouTubeChannel(accessToken) {
+  const url = new URL('https://www.googleapis.com/youtube/v3/channels');
+  url.searchParams.set('part', 'snippet');
+  url.searchParams.set('mine', 'true');
+  const res  = await fetch(url.toString(), {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  });
+  const data = await res.json();
+  const item = data.items?.[0];
+  return {
+    channel: {
+      id:         item?.id ?? null,
+      title:      item?.snippet?.title ?? null,
+      avatar_url: item?.snippet?.thumbnails?.high?.url ?? item?.snippet?.thumbnails?.default?.url ?? null,
+    },
+    raw: data,
+  };
 }
 
 async function sendMagicLink(email, link, env) {
