@@ -82,12 +82,11 @@
     .form-group { margin-bottom: 1rem; }
     .form-group label {
       display: block;
-      font-size: 0.8rem;
-      font-weight: 600;
+      font-size: 0.75rem;
+      font-weight: 700;
       color: var(--muted);
       margin-bottom: 0.4rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
     }
 
     .drop-zone {
@@ -399,73 +398,71 @@
         <div class="card-title"><span class="icon">⬆️</span> Post a Video</div>
 
         <form id="upload-form" onsubmit="submitPost(event)">
-          <div class="upload-form-inner">
 
-            <!-- Left col: file + caption -->
-            <div>
-              <div class="form-group">
-                <label>Video file</label>
-                <div class="drop-zone" id="drop-zone">
-                  <input type="file" id="video-input" name="video" accept="video/*" onchange="onFileSelect(this)" />
-                  <div class="drop-zone-icon">🎬</div>
-                  <p>Drop your video here or <strong>browse</strong></p>
-                  <p style="font-size:0.75rem;margin-top:0.25rem">MP4 · Max 50 MB</p>
-                  <div class="file-name" id="file-name"></div>
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label>Caption</label>
-                <textarea class="input" id="caption" name="caption"
-                  placeholder="Write a caption… #hashtags"
-                  maxlength="2200"
-                  oninput="updateCharCount(this)"></textarea>
-                <div class="char-count" id="char-count">0 / 2200</div>
+          <!-- Row 1: Video + Accounts (2 col) -->
+          <div class="upload-form-inner" style="margin-bottom:1rem">
+            <div class="form-group" style="margin-bottom:0">
+              <label>Video File</label>
+              <div class="drop-zone" id="drop-zone">
+                <input type="file" id="video-input" name="video" accept="video/*" onchange="onFileSelect(this)" />
+                <div class="drop-zone-icon">🎬</div>
+                <p>Drop your video here or <strong>browse</strong></p>
+                <p style="font-size:0.75rem;margin-top:0.25rem">MP4 · Max 50 MB</p>
+                <div class="file-name" id="file-name"></div>
               </div>
             </div>
 
-            <!-- Right col: account + privacy + schedule + submit -->
-            <div>
-              <div class="form-group">
-                <label>Publish to</label>
-                <div id="account-checkboxes" class="account-checkboxes">
-                  <div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No accounts connected</div>
-                </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label>Publish To</label>
+              <div id="account-checkboxes" class="account-checkboxes">
+                <div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No accounts connected</div>
               </div>
+            </div>
+          </div>
 
-              <div class="form-group">
-                <label>Privacy</label>
-                <select class="input" id="privacy" name="privacy">
-                  <option value="private">Only Me (Private)</option>
-                  <option value="public">Everyone (Public)</option>
-                  <option value="unlisted">Unlisted</option>
-                </select>
-              </div>
+          <!-- Row 2: Caption (full width) -->
+          <div class="form-group">
+            <label>Caption</label>
+            <textarea class="input" id="caption" name="caption"
+              placeholder="Write a caption… #hashtags"
+              maxlength="2200"
+              oninput="updateCharCount(this)"></textarea>
+            <div class="char-count" id="char-count">0 / 2200</div>
+          </div>
 
-              <div class="form-group">
-                <label>Schedule</label>
-                <label class="schedule-toggle">
-                  <span class="toggle-switch">
-                    <input type="checkbox" id="schedule-toggle" autocomplete="off" onchange="toggleSchedule(this)" />
-                    <span class="toggle-slider"></span>
-                  </span>
-                  <span class="toggle-label">Schedule for later</span>
-                </label>
-
-                <div class="schedule-fields" id="schedule-fields">
-                  <div class="form-group">
-                    <label>Date &amp; time</label>
-                    <input type="datetime-local" class="input" id="schedule-time" name="schedule_time" />
-                  </div>
-                </div>
-              </div>
-
-              <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.25rem;justify-content:center" id="submit-btn">
-                Publish Now
-              </button>
+          <!-- Row 3: Privacy + Schedule (2 col) -->
+          <div class="upload-form-inner" style="margin-bottom:1rem;align-items:flex-start">
+            <div class="form-group" style="margin-bottom:0">
+              <label>Privacy</label>
+              <select class="input" id="privacy" name="privacy">
+                <option value="private">Only Me (Private)</option>
+                <option value="public">Everyone (Public)</option>
+                <option value="unlisted">Unlisted</option>
+              </select>
             </div>
 
-          </div><!-- /upload-form-inner -->
+            <div class="form-group" style="margin-bottom:0">
+              <label>Schedule</label>
+              <label class="schedule-toggle" style="margin-top:0.1rem">
+                <span class="toggle-switch">
+                  <input type="checkbox" id="schedule-toggle" autocomplete="off" onchange="toggleSchedule(this)" />
+                  <span class="toggle-slider"></span>
+                </span>
+                <span class="toggle-label">Schedule for later</span>
+              </label>
+              <div class="schedule-fields" id="schedule-fields">
+                <div class="form-group" style="margin-top:0.75rem;margin-bottom:0">
+                  <label>Date &amp; Time</label>
+                  <input type="datetime-local" class="input" id="schedule-time" name="schedule_time" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 4: Submit -->
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center" id="submit-btn">
+            Publish Now
+          </button>
 
           <div class="upload-status" id="upload-status"></div>
         </form>

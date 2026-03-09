@@ -489,6 +489,11 @@ app.post('/api/instagram/upload', async (c) => {
   const videoBytes  = await videoFile.arrayBuffer();
   const videoSize   = videoBytes.byteLength;
 
+  if (!igUserId) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'no_ig_user_id', account_id: accountId, user_id: session.user_id });
+    return c.json({ error: 'Instagram user ID not found — try reconnecting your account' }, 400);
+  }
+
   if (videoSize > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 50MB)' }, 413);
 
   // Step 1: Initialize container via Graph API — returns container ID + pre-authorized upload URI
@@ -506,7 +511,7 @@ app.post('/api/instagram/upload', async (c) => {
 
   if (!initRes.ok) {
     const errText = await initRes.text();
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_failed', status: initRes.status, message: errText, user_id: session.user_id });
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_failed', status: initRes.status, message: errText, ig_user_id: igUserId, user_id: session.user_id });
     return c.json({ error: 'Failed to initialize Instagram upload' }, 500);
   }
 
