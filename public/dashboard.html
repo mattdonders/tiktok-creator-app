@@ -316,6 +316,44 @@
       .upload-form-inner { grid-template-columns: 1fr; }
     }
 
+    /* ── Account checkboxes ── */
+    .account-checkboxes {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .account-check-row {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.15s;
+    }
+    .account-check-row:hover { border-color: #333; }
+    .account-check-row.selected { border-color: var(--accent); background: rgba(124,58,237,0.06); }
+    .account-check-row input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .account-check-name {
+      flex: 1;
+      font-size: 0.85rem;
+      font-weight: 500;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     /* ── Progress / status bar ── */
     .upload-status {
       display: none;
@@ -494,19 +532,18 @@
             <!-- Right col: account + privacy + schedule + submit -->
             <div>
               <div class="form-group">
-                <label>Account</label>
-                <select class="input" id="account-select" name="account_id">
-                  <option value="" disabled selected>No accounts connected</option>
-                </select>
+                <label>Publish to</label>
+                <div id="account-checkboxes" class="account-checkboxes">
+                  <div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No accounts connected</div>
+                </div>
               </div>
 
               <div class="form-group">
                 <label>Privacy</label>
                 <select class="input" id="privacy" name="privacy">
-                  <option value="SELF_ONLY">Only me (private)</option>
-                  <option value="MUTUAL_FOLLOW_FRIENDS">Friends only</option>
-                  <option value="FOLLOWER_OF_CREATOR">Followers</option>
-                  <option value="PUBLIC_TO_EVERYONE">Everyone (public)</option>
+                  <option value="private">Only me (private)</option>
+                  <option value="public">Everyone (public)</option>
+                  <option value="unlisted">Unlisted</option>
                 </select>
               </div>
 
@@ -619,13 +656,13 @@
         user     = data.user ?? {};
 
         renderAccountStrip();
-        populateAccountSelector();
+        renderAccountCheckboxes();
         renderNavAccount();
 
       } catch {
         // Network error — stay on dashboard, show empty state
         renderAccountStrip();
-        populateAccountSelector();
+        renderAccountCheckboxes();
       }
     }
 
@@ -651,6 +688,10 @@
     const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube' };
     const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)' };
     const PLATFORM_COLOR = { tiktok: '#ccc',   youtube: '#ff6b6b' };
+    const PRIVACY_MAP    = {
+      tiktok:  { public: 'PUBLIC_TO_EVERYONE', unlisted: 'SELF_ONLY', private: 'SELF_ONLY'  },
+      youtube: { public: 'public',             unlisted: 'unlisted',  private: 'private'     },
+    };
 
     function buildAccountRow(acc) {
       const platform = acc.platform ?? 'tiktok';
@@ -680,30 +721,51 @@
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Populate account dropdown in upload form
+    // Account checkboxes in upload form
     // ─────────────────────────────────────────────────────────────────────────
-    function populateAccountSelector() {
-      const sel = document.getElementById("account-select");
-      sel.innerHTML = "";
-
+    function renderAccountCheckboxes() {
+      const container = document.getElementById("account-checkboxes");
       if (!accounts.length) {
-        sel.innerHTML = `<option value="" disabled selected>No accounts connected</option>`;
-        sel.disabled  = true;
+        container.innerHTML = `<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No accounts connected</div>`;
+        updateSubmitBtn();
         return;
       }
+      container.innerHTML = accounts.map(acc => {
+        const platform  = acc.platform ?? 'tiktok';
+        const name      = escHtml(acc.display_name ?? PLATFORM_LABEL[platform] ?? 'Account');
+        const id        = escHtml(acc.id ?? '');
+        const platLabel = escHtml(PLATFORM_LABEL[platform] ?? platform);
+        const platColor = PLATFORM_COLOR[platform] ?? '#888';
+        const platBg    = PLATFORM_BG[platform]    ?? 'rgba(255,255,255,0.08)';
+        return `
+          <label class="account-check-row" id="row-${id}">
+            <input type="checkbox" class="acct-cb" value="${id}" onchange="onCheckboxChange(this)" />
+            <span class="account-check-name">${name}</span>
+            <span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:4px;padding:0.2rem 0.5rem;flex-shrink:0">${platLabel}</span>
+          </label>`;
+      }).join('');
+      updateSubmitBtn();
+    }
 
-      sel.disabled = false;
-      accounts.forEach((acc, i) => {
-        const platform = acc.platform ?? 'tiktok';
-        const name     = acc.display_name ?? PLATFORM_LABEL[platform] ?? 'Account';
-        const id       = acc.id ?? String(i);
-        const opt      = document.createElement("option");
-        opt.value           = id;
-        opt.textContent     = `[${PLATFORM_LABEL[platform] ?? platform}] ${name}`;
-        opt.dataset.platform = platform;
-        if (i === 0) opt.selected = true;
-        sel.appendChild(opt);
-      });
+    function onCheckboxChange(cb) {
+      cb.closest('.account-check-row').classList.toggle('selected', cb.checked);
+      updateSubmitBtn();
+    }
+
+    function getCheckedAccountIds() {
+      return [...document.querySelectorAll('.acct-cb:checked')].map(cb => cb.value);
+    }
+
+    function updateSubmitBtn() {
+      const btn       = document.getElementById("submit-btn");
+      const n         = getCheckedAccountIds().length;
+      const scheduled = document.getElementById("schedule-toggle")?.checked ?? false;
+      btn.disabled    = (n === 0);
+      if (n >= 2) {
+        btn.textContent = scheduled ? `Schedule to ${n} accounts` : `Publish to ${n} accounts`;
+      } else {
+        btn.textContent = scheduled ? "Schedule Post" : "Publish Now";
+      }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -796,16 +858,14 @@
     function toggleSchedule(checkbox) {
       const fields = document.getElementById("schedule-fields");
       const label  = document.getElementById("toggle-label");
-      const btn    = document.getElementById("submit-btn");
       if (checkbox.checked) {
         fields.classList.add("visible");
         label.textContent = "Schedule for later";
-        btn.textContent   = "Schedule Post";
       } else {
         fields.classList.remove("visible");
         label.textContent = "Post immediately";
-        btn.textContent   = "Publish Now";
       }
+      updateSubmitBtn();
     }
 
     function setDefaultScheduleTime() {
@@ -846,105 +906,113 @@
     async function submitPost(e) {
       e.preventDefault();
 
-      const btn       = document.getElementById("submit-btn");
-      const videoFile = document.getElementById("video-input").files[0];
-      const caption   = document.getElementById("caption").value;
-      const accountId = document.getElementById("account-select").value;
-      const scheduled = document.getElementById("schedule-toggle").checked;
-      const schedTime = document.getElementById("schedule-time").value;
+      const videoFile  = document.getElementById("video-input").files[0];
+      const caption    = document.getElementById("caption").value;
+      const privacy    = document.getElementById("privacy").value;
+      const scheduled  = document.getElementById("schedule-toggle").checked;
+      const schedTime  = document.getElementById("schedule-time").value;
+      const checkedIds = getCheckedAccountIds();
 
-      // Validation
-      if (!videoFile) {
-        showStatus("Please select a video file.", "error");
-        return;
-      }
-      if (!accountId) {
-        showStatus("Please connect an account first.", "error");
-        return;
-      }
+      if (!videoFile)         { showStatus("Please select a video file.", "error"); return; }
+      if (!checkedIds.length) { showStatus("Select at least one account.", "error"); return; }
       if (scheduled && !validateScheduleTime()) return;
 
-      const acc      = accounts.find(a => a.id === accountId);
-      const platform = acc?.platform ?? 'tiktok';
+      const btn           = document.getElementById("submit-btn");
+      const origLabel     = btn.textContent;
+      const checkedAccounts = checkedIds.map(id => accounts.find(a => a.id === id)).filter(Boolean);
 
-      // Lock UI
-      const origLabel = btn.textContent;
       btn.disabled    = true;
-      btn.textContent = "Uploading…";
-      showStatus(`Uploading video…`);
+      btn.textContent = checkedAccounts.length > 1 ? `Uploading to ${checkedAccounts.length}…` : "Uploading…";
+      showStatus(checkedAccounts.length > 1 ? `Uploading to ${checkedAccounts.length} accounts…` : "Uploading…");
 
-      try {
-        if (platform === 'youtube') {
-          await submitYouTube({ acc, accountId, videoFile, caption, btn, origLabel });
+      const results = await Promise.allSettled(
+        checkedAccounts.map(acc => {
+          const platform = acc.platform ?? 'tiktok';
+          if (platform === 'youtube') {
+            return submitYouTube({ acc, videoFile, caption, privacy });
+          } else {
+            return submitTikTok({ acc, videoFile, caption, privacy, scheduled, schedTime });
+          }
+        })
+      );
+
+      if (results.length === 1) {
+        const r = results[0];
+        if (r.status === 'fulfilled') {
+          addPost(r.value.post);
+          showStatus(r.value.message, 'success');
         } else {
-          await submitTikTok({ acc, accountId, videoFile, caption, scheduled, schedTime, btn, origLabel });
+          showStatus(r.reason?.message ?? 'Upload failed.', 'error');
         }
-      } catch {
-        showStatus("Network error. Please check your connection and try again.", "error");
-        btn.disabled    = false;
-        btn.textContent = origLabel;
+      } else {
+        const allOk = results.every(r => r.status === 'fulfilled');
+        const lines = results.map((r, i) => {
+          const name = escHtml(checkedAccounts[i].display_name ?? 'Account');
+          if (r.status === 'fulfilled') {
+            addPost(r.value.post);
+            return `<div>✓ <strong>${name}</strong>: ${escHtml(r.value.message)}</div>`;
+          } else {
+            return `<div style="opacity:0.85">✗ <strong>${name}</strong>: ${escHtml(r.reason?.message ?? 'Failed')}</div>`;
+          }
+        });
+        showStatusHTML(lines.join(''), allOk ? 'success' : 'error');
       }
+
+      renderPosts(); updateStats(); resetForm();
+      btn.disabled    = false;
+      btn.textContent = origLabel;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // TikTok upload
     // ─────────────────────────────────────────────────────────────────────────
-    async function submitTikTok({ acc, accountId, videoFile, caption, scheduled, schedTime, btn, origLabel }) {
+    async function submitTikTok({ acc, videoFile, caption, privacy, scheduled, schedTime }) {
       const form = new FormData();
       form.append("video",      videoFile);
       form.append("caption",    caption);
-      form.append("account_id", accountId);
-      form.append("privacy",    document.getElementById("privacy").value);
-      if (scheduled && schedTime) {
-        form.append("schedule_time", new Date(schedTime).toISOString());
-      }
+      form.append("account_id", acc.id);
+      form.append("privacy",    PRIVACY_MAP.tiktok[privacy] ?? 'SELF_ONLY');
+      if (scheduled && schedTime) form.append("schedule_time", new Date(schedTime).toISOString());
 
       const res  = await fetch("/api/publish", { method: "POST", body: form });
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.error === 'token_revoked') {
-          showStatus('Your TikTok connection has expired or been revoked. Please <a href="/auth/tiktok" style="color:inherit;text-decoration:underline">reconnect your account</a>.', "error");
-        } else {
-          showStatus(data.error ?? "Upload failed. Please try again.", "error");
-        }
-        btn.disabled = false; btn.textContent = origLabel;
-        return;
+        const msg = data.error === 'token_revoked'
+          ? `${acc.display_name ?? 'TikTok'} connection expired — reconnect it above`
+          : (data.error ?? 'Upload failed');
+        throw new Error(msg);
       }
 
-      const accName    = acc?.display_name ?? "TikTok";
-      const successMsg = scheduled
-        ? `Scheduled! ✓ Will post to ${accName} at the selected time.`
+      const accName = acc.display_name ?? "TikTok";
+      const message = scheduled
+        ? `Scheduled for ${accName} ✓`
         : data.inbox
-          ? `Uploaded to ${accName}! ✓ Check your Drafts in the TikTok app to review and publish.`
-          : `Posted to ${accName}! ✓ It may take a few minutes to appear on your profile.`;
-      showStatus(successMsg, "success");
+          ? `Uploaded to ${accName} ✓ (check TikTok Drafts)`
+          : `Posted to ${accName} ✓`;
 
       const post = normalisePost({
         id: data.publish_id, caption: caption || "(no caption)",
         time: scheduled ? schedTime : new Date().toISOString(),
-        status: scheduled ? "scheduled" : "processing", account_name: acc?.display_name ?? "",
+        status: scheduled ? "scheduled" : "processing",
+        account_name: acc.display_name ?? "",
       });
-      posts.unshift(post);
-      localStorage.setItem("cp_posts", JSON.stringify(posts.slice(0, 50)));
-      renderPosts(); updateStats(); resetForm();
-      if (!scheduled && data.publish_id) pollStatus(data.publish_id, accountId);
-      btn.disabled = false; btn.textContent = origLabel;
+      if (!scheduled && data.publish_id) pollStatus(data.publish_id, acc.id);
+      return { message, post };
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // YouTube upload (browser → Google directly)
     // ─────────────────────────────────────────────────────────────────────────
-    async function submitYouTube({ acc, accountId, videoFile, caption, btn, origLabel }) {
-      // Step 1: get resumable upload URL from our server
+    async function submitYouTube({ acc, videoFile, caption, privacy }) {
       const sessionRes = await fetch('/api/youtube/upload-session', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          account_id:     accountId,
+          account_id:     acc.id,
           title:          caption || 'Untitled',
           description:    caption,
-          privacy_status: document.getElementById("privacy").value === 'SELF_ONLY' ? 'private' : 'public',
+          privacy_status: PRIVACY_MAP.youtube[privacy] ?? 'private',
           file_size:      videoFile.size,
           mime_type:      videoFile.type || 'video/mp4',
         }),
@@ -952,27 +1020,24 @@
       const sessionData = await sessionRes.json();
 
       if (!sessionRes.ok) {
-        if (sessionData.error === 'token_revoked') {
-          showStatus('Your YouTube connection has expired. Please <a href="/auth/youtube" style="color:inherit;text-decoration:underline">reconnect your account</a>.', "error");
-        } else {
-          showStatus(sessionData.error ?? "Failed to start YouTube upload.", "error");
-        }
-        btn.disabled = false; btn.textContent = origLabel;
-        return;
+        const msg = sessionData.error === 'token_revoked'
+          ? `${acc.display_name ?? 'YouTube'} connection expired — reconnect it above`
+          : (sessionData.error ?? 'Failed to start YouTube upload');
+        throw new Error(msg);
       }
 
       const { upload_url, post_id } = sessionData;
+      const singleUpload = getCheckedAccountIds().length === 1;
 
-      // Step 2: upload directly to Google with progress tracking
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', upload_url);
         xhr.setRequestHeader('Content-Type', videoFile.type || 'video/mp4');
 
         xhr.upload.onprogress = e => {
-          if (e.lengthComputable) {
+          if (e.lengthComputable && singleUpload) {
             const pct = Math.round((e.loaded / e.total) * 100);
-            btn.textContent = `Uploading… ${pct}%`;
+            document.getElementById("submit-btn").textContent = `Uploading… ${pct}%`;
             showStatus(`Uploading to YouTube… ${pct}%`);
           }
         };
@@ -980,7 +1045,6 @@
         xhr.onload = async () => {
           if (xhr.status === 200 || xhr.status === 201) {
             const videoData = JSON.parse(xhr.responseText);
-            // Notify our server upload is complete
             await fetch('/api/youtube/complete', {
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -991,21 +1055,23 @@
             reject(new Error(`Upload failed: ${xhr.status}`));
           }
         };
-        xhr.onerror = () => reject(new Error('Upload network error'));
+        xhr.onerror = () => reject(new Error('Network error — upload failed'));
         xhr.send(videoFile);
       });
 
-      const accName = acc?.display_name ?? "YouTube";
-      showStatus(`Uploaded to ${accName}! ✓ Your video is processing on YouTube.`, "success");
-
+      const accName = acc.display_name ?? "YouTube";
       const post = normalisePost({
         id: post_id, caption: caption || "(no caption)",
-        time: new Date().toISOString(), status: "processing", account_name: acc?.display_name ?? "",
+        time: new Date().toISOString(), status: "processing",
+        account_name: acc.display_name ?? "",
       });
+      return { message: `Uploaded to ${accName} ✓ (processing)`, post };
+    }
+
+    function addPost(post) {
+      if (!post) return;
       posts.unshift(post);
       localStorage.setItem("cp_posts", JSON.stringify(posts.slice(0, 50)));
-      renderPosts(); updateStats(); resetForm();
-      btn.disabled = false; btn.textContent = origLabel;
     }
 
     function resetForm() {
@@ -1015,7 +1081,11 @@
       document.getElementById("schedule-toggle").checked = false;
       toggleSchedule(document.getElementById("schedule-toggle"));
       setDefaultScheduleTime();
-      if (accounts.length) document.getElementById("account-select").value = accounts[0].id ?? "";
+      document.querySelectorAll('.acct-cb').forEach(cb => {
+        cb.checked = false;
+        cb.closest('.account-check-row')?.classList.remove('selected');
+      });
+      updateSubmitBtn();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1105,7 +1175,7 @@
       if (res.ok) {
         accounts = accounts.filter(a => (a.id ?? a.open_id) !== accountId);
         renderAccountStrip();
-        populateAccountSelector();
+        renderAccountCheckboxes();
         renderNavAccount();
       }
     }
@@ -1114,9 +1184,17 @@
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
     function showStatus(msg, type = "info") {
-      const el        = document.getElementById("upload-status");
-      el.textContent  = msg;
-      el.className    = "upload-status" + (type !== "info" ? ` ${type}` : "");
+      const el         = document.getElementById("upload-status");
+      el.innerHTML     = '';
+      el.textContent   = msg;
+      el.className     = "upload-status" + (type !== "info" ? ` ${type}` : "");
+      el.style.display = "block";
+    }
+
+    function showStatusHTML(html, type = "info") {
+      const el         = document.getElementById("upload-status");
+      el.innerHTML     = html;
+      el.className     = "upload-status" + (type !== "info" ? ` ${type}` : "");
       el.style.display = "block";
     }
 
