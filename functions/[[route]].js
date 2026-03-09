@@ -264,7 +264,7 @@ app.get('/api/debug/tiktok-profile', async (c) => {
   if (!account) return c.json({ error: 'no account found' }, 404);
 
   const res  = await fetch(
-    'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,username',
+    'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name',
     { headers: { Authorization: `Bearer ${account.access_token}` } }
   );
   const data = await res.json();
@@ -489,7 +489,7 @@ async function exchangeTikTokCode(code, redirectUri, env) {
 
 async function fetchTikTokProfile(accessToken) {
   const res  = await fetch(
-    'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,username',
+    'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name',
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
