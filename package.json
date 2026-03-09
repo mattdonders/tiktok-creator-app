@@ -1,0 +1,12 @@
+{
+  "name": "creatorpost",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev public --binding DB=DB",
+    "deploy": "wrangler pages deploy public"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  }
+}
