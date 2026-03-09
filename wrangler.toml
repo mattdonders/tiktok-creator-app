@@ -5,7 +5,7 @@ compatibility_date = "2024-09-02"
 [[d1_databases]]
 binding     = "DB"
 database_name = "creatorpost"
-database_id = "REPLACE_WITH_D1_ID"  # run: wrangler d1 create creatorpost
+database_id = "e848bad2-3485-45f5-8ecb-5e90924cc885"
 
 # Secrets — set in Cloudflare Pages dashboard (Settings → Environment variables):
 #   TIKTOK_CLIENT_ID
