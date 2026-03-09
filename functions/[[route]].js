@@ -264,6 +264,7 @@ app.post('/api/disconnect', async (c) => {
     'DELETE FROM connected_accounts WHERE id = ? AND user_id = ?'
   ).bind(account_id, session.user_id).run();
 
+  log(c, { type: 'event', event: 'account_disconnected', account_id, user_id: session.user_id });
   return c.json({ ok: true });
 });
 
