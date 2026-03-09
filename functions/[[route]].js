@@ -213,6 +213,7 @@ app.get('/callback', async (c) => {
     profile = await fetchTikTokProfile(tokenData.access_token);
   } catch (err) {
     console.error('Profile fetch failed:', err);
+    log(c, { type: 'error', event: 'tiktok_profile_fetch_failed', message: err.message, user_id: userId });
   }
 
   // Upsert connected account
