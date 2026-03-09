@@ -251,6 +251,26 @@ app.get('/callback', async (c) => {
   return c.redirect('/dashboard');
 });
 
+// ── DEBUG — temporary profile inspection endpoint ─────────────────────────────
+
+app.get('/api/debug/tiktok-profile', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const account = await c.env.DB.prepare(
+    'SELECT access_token, platform_user_id FROM connected_accounts WHERE user_id = ? LIMIT 1'
+  ).bind(session.user_id).first();
+
+  if (!account) return c.json({ error: 'no account found' }, 404);
+
+  const res  = await fetch(
+    'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,username',
+    { headers: { Authorization: `Bearer ${account.access_token}` } }
+  );
+  const data = await res.json();
+  return c.json({ http_status: res.status, tiktok_response: data });
+});
+
 // ── API — disconnect account ──────────────────────────────────────────────────
 
 app.post('/api/disconnect', async (c) => {
