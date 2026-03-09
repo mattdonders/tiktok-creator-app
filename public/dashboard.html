@@ -647,7 +647,7 @@
       const handle  = acc.platform_user_id ? `@${escHtml(acc.platform_user_id)}` : "";
       const initial = (acc.display_name ?? "T").match(/[a-zA-Z0-9]/)?.[0]?.toUpperCase() ?? "T";
       const avatar  = acc.avatar_url ?? "";
-      const id      = escHtml(acc.open_id ?? acc.account_id ?? "");
+      const id      = escHtml(acc.id ?? "");
 
       const avatarHtml = avatar
         ? `<img src="${escHtml(avatar)}" alt="${name}" onerror="this.style.display='none';this.previousElementSibling.style.display='flex'" /><span style="display:none;width:100%;height:100%;align-items:center;justify-content:center">${initial}</span>`
@@ -681,7 +681,7 @@
       sel.disabled = false;
       accounts.forEach((acc, i) => {
         const name = acc.display_name ?? "TikTok Account";
-        const id   = acc.open_id ?? acc.account_id ?? String(i);
+        const id   = acc.id ?? String(i);
         const opt  = document.createElement("option");
         opt.value       = id;
         opt.textContent = name;
