@@ -563,9 +563,20 @@
           <div class="form-group">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
               <label style="margin-bottom:0">Caption</label>
-              <button type="button" class="btn btn-outline" id="ai-caption-btn"
-                style="font-size:0.75rem;padding:0.25rem 0.65rem;display:flex;align-items:center;gap:0.35rem"
-                onclick="toggleAiPanel()">✨ Generate</button>
+              <div style="display:flex;gap:0.4rem;position:relative">
+                <button type="button" class="btn btn-outline" id="ai-caption-btn"
+                  style="font-size:0.75rem;padding:0.25rem 0.65rem;display:flex;align-items:center;gap:0.35rem"
+                  onclick="toggleAiPanel()">✨ Generate</button>
+                <button type="button" class="btn btn-outline" id="hashtag-sets-btn"
+                  style="font-size:0.75rem;padding:0.25rem 0.65rem"
+                  onclick="toggleHashtagDropdown()"># Sets</button>
+                <div id="hashtag-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.3);z-index:100;padding:0.4rem 0">
+                  <div id="hashtag-dropdown-list"></div>
+                  <div style="border-top:1px solid var(--border);margin-top:0.4rem;padding:0.4rem 0.75rem 0">
+                    <a href="/account" style="font-size:0.75rem;color:var(--muted);text-decoration:none">Manage sets</a>
+                  </div>
+                </div>
+              </div>
             </div>
             <div id="ai-caption-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0.85rem;margin-bottom:0.6rem">
               <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.5rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase">Describe your video</div>
@@ -753,6 +764,7 @@
 
       await loadProfile();
       await loadPosts();
+      loadHashtagSets();
       setDefaultScheduleTime();
     });
 
@@ -1603,6 +1615,56 @@
         }
       } catch { /* stats are non-critical */ }
     }
+
+    // ── Hashtag Sets ──────────────────────────────────────────────────────────
+
+    let hashtagSets = [];
+
+    async function loadHashtagSets() {
+      try {
+        const res = await fetch('/api/hashtag-sets');
+        if (res.ok) hashtagSets = await res.json();
+      } catch { /* non-critical */ }
+    }
+
+    function toggleHashtagDropdown() {
+      const dd = document.getElementById('hashtag-dropdown');
+      const isHidden = dd.style.display === 'none';
+      if (isHidden) renderHashtagDropdown();
+      dd.style.display = isHidden ? 'block' : 'none';
+    }
+
+    function renderHashtagDropdown() {
+      const list = document.getElementById('hashtag-dropdown-list');
+      if (!hashtagSets.length) {
+        list.innerHTML = `<div style="font-size:0.8rem;color:var(--muted);padding:0.5rem 0.75rem">No sets yet. <a href="/account" style="color:var(--accent-light)">Create one</a></div>`;
+        return;
+      }
+      list.innerHTML = hashtagSets.map(s => `
+        <button type="button" onclick="appendHashtagSet(${JSON.stringify(escHtml(s.hashtags))})"
+          style="width:100%;text-align:left;background:none;border:none;padding:0.5rem 0.75rem;cursor:pointer;color:var(--text);font-size:0.85rem;display:flex;flex-direction:column;gap:0.15rem"
+          onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">
+          <span style="font-weight:600">${escHtml(s.name)}</span>
+          <span style="font-size:0.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">${escHtml(s.hashtags)}</span>
+        </button>`).join('');
+    }
+
+    function appendHashtagSet(hashtags) {
+      const el  = document.getElementById('caption');
+      const val = el.value.trimEnd();
+      el.value  = val ? `${val}\n\n${hashtags}` : hashtags;
+      updateCharCount(el);
+      document.getElementById('hashtag-dropdown').style.display = 'none';
+    }
+
+    // Close hashtag dropdown on outside click
+    document.addEventListener('click', e => {
+      const btn = document.getElementById('hashtag-sets-btn');
+      const dd  = document.getElementById('hashtag-dropdown');
+      if (dd && !dd.contains(e.target) && e.target !== btn) {
+        dd.style.display = 'none';
+      }
+    });
 
     // ── AI Caption ────────────────────────────────────────────────────────────
 

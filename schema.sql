@@ -63,3 +63,13 @@ CREATE INDEX IF NOT EXISTS idx_posts_account     ON posts(account_id);
 CREATE INDEX IF NOT EXISTS idx_magic_links_email ON magic_links(email);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user     ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash     ON api_keys(key_hash);
+
+CREATE TABLE IF NOT EXISTS hashtag_sets (
+  id         TEXT    PRIMARY KEY,
+  user_id    TEXT    NOT NULL REFERENCES users(id),
+  name       TEXT    NOT NULL,
+  hashtags   TEXT    NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_hashtag_sets_user ON hashtag_sets(user_id);

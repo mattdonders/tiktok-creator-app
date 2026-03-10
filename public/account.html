@@ -214,6 +214,32 @@
       </div>
     </div>
 
+    <!-- Hashtag Sets -->
+    <div class="profile-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.75rem">
+        <div class="card-section-title" style="margin-bottom:0">Hashtag Sets</div>
+        <button class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem" onclick="toggleNewSetForm()">+ New Set</button>
+      </div>
+      <div id="new-set-form" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:1rem;margin-bottom:1rem">
+        <div class="field-row">
+          <label class="field-label" for="set-name">Set name</label>
+          <input id="set-name" type="text" placeholder="e.g. History, Fitness, General"
+            style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.85rem;color:var(--text);font-size:0.95rem;outline:none;font-family:inherit" />
+        </div>
+        <div class="field-row">
+          <label class="field-label" for="set-hashtags">Hashtags</label>
+          <input id="set-hashtags" type="text" placeholder="#history #historyfacts #learnhistory"
+            style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.85rem;color:var(--text);font-size:0.95rem;outline:none;font-family:inherit" />
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <button class="btn btn-primary" style="font-size:0.85rem" onclick="saveHashtagSet()">Save</button>
+          <button class="btn btn-outline" style="font-size:0.85rem" onclick="toggleNewSetForm()">Cancel</button>
+          <span id="set-error" style="font-size:0.82rem;color:#f87171;display:none"></span>
+        </div>
+      </div>
+      <div id="hashtag-sets-list"><div style="color:var(--muted);font-size:0.9rem">Loading...</div></div>
+    </div>
+
     <!-- API Keys -->
     <div class="profile-card">
       <div class="card-section-title">API Keys</div>
@@ -404,8 +430,65 @@
       loadApiKeys();
     }
 
+    // ── Hashtag Sets ──────────────────────────────────────────────────────────
+
+    async function loadHashtagSets() {
+      const res  = await fetch('/api/hashtag-sets');
+      const sets = await res.json();
+      const list = document.getElementById('hashtag-sets-list');
+      if (!sets.length) {
+        list.innerHTML = '<div style="color:var(--muted);font-size:0.9rem">No hashtag sets yet.</div>';
+        return;
+      }
+      list.innerHTML = sets.map(s => `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0.65rem 0;border-bottom:1px solid var(--border);gap:1rem">
+          <div style="min-width:0">
+            <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.2rem">${escHtml(s.name)}</div>
+            <div style="font-size:0.8rem;color:var(--muted);word-break:break-word">${escHtml(s.hashtags)}</div>
+          </div>
+          <button class="disconnect-btn" onclick="deleteHashtagSet('${escHtml(s.id)}')">Delete</button>
+        </div>`).join('');
+    }
+
+    function toggleNewSetForm() {
+      const form = document.getElementById('new-set-form');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      if (form.style.display === 'block') document.getElementById('set-name').focus();
+    }
+
+    async function saveHashtagSet() {
+      const name     = document.getElementById('set-name').value.trim();
+      const hashtags = document.getElementById('set-hashtags').value.trim();
+      const errorEl  = document.getElementById('set-error');
+      errorEl.style.display = 'none';
+      if (!name)     { errorEl.textContent = 'Name is required.';     errorEl.style.display = 'inline'; return; }
+      if (!hashtags) { errorEl.textContent = 'Hashtags are required.'; errorEl.style.display = 'inline'; return; }
+      const res = await fetch('/api/hashtag-sets', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ name, hashtags }),
+      });
+      if (res.ok) {
+        document.getElementById('set-name').value     = '';
+        document.getElementById('set-hashtags').value = '';
+        document.getElementById('new-set-form').style.display = 'none';
+        loadHashtagSets();
+      } else {
+        const data = await res.json();
+        errorEl.textContent   = data.error ?? 'Failed to save.';
+        errorEl.style.display = 'inline';
+      }
+    }
+
+    async function deleteHashtagSet(id) {
+      if (!confirm('Delete this hashtag set?')) return;
+      await fetch(`/api/hashtag-sets/${id}`, { method: 'DELETE' });
+      loadHashtagSets();
+    }
+
     loadProfile();
     loadApiKeys();
+    loadHashtagSets();
   </script>
 </body>
 </html>

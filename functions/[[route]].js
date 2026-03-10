@@ -1010,6 +1010,39 @@ app.get('/api/tiktok/creator_info', async (c) => {
   return c.json(data.data ?? {});
 });
 
+// ── API — hashtag sets ────────────────────────────────────────────────────────
+
+app.get('/api/hashtag-sets', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, name, hashtags, created_at FROM hashtag_sets WHERE user_id = ? ORDER BY created_at ASC'
+  ).bind(session.user_id).all();
+  return c.json(results);
+});
+
+app.post('/api/hashtag-sets', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const { name, hashtags } = await c.req.json().catch(() => ({}));
+  if (!name?.trim())     return c.json({ error: 'Name is required.' }, 400);
+  if (!hashtags?.trim()) return c.json({ error: 'Hashtags are required.' }, 400);
+  const id = newId();
+  await c.env.DB.prepare(
+    'INSERT INTO hashtag_sets (id, user_id, name, hashtags, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).bind(id, session.user_id, name.trim(), hashtags.trim(), now()).run();
+  return c.json({ id, name: name.trim(), hashtags: hashtags.trim() });
+});
+
+app.delete('/api/hashtag-sets/:id', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  await c.env.DB.prepare(
+    'DELETE FROM hashtag_sets WHERE id = ? AND user_id = ?'
+  ).bind(c.req.param('id'), session.user_id).run();
+  return c.json({ ok: true });
+});
+
 // ── API — AI caption generator ───────────────────────────────────────────────
 
 app.post('/api/ai/caption', async (c) => {
