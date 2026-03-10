@@ -535,17 +535,18 @@ app.post('/api/instagram/upload', async (c) => {
 
   // Step 2: Create Reels container with video_url
   // NOTE: video_url is the only supported method for Instagram Login tokens.
-  // upload_type=resumable and rupload.facebook.com both require Facebook Login tokens.
+  // Must use form-encoded body (not JSON) — confirmed from working reference implementation.
+  const initParams = new URLSearchParams({
+    media_type:    'REELS',
+    video_url:     videoUrl,
+    caption,
+    share_to_feed: 'true',
+    access_token:  accessToken,
+  });
   const initRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      media_type:    'REELS',
-      video_url:     videoUrl,
-      caption,
-      share_to_feed: 'true',
-      access_token:  accessToken,
-    }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:   initParams.toString(),
   });
 
   if (!initRes.ok) {
@@ -649,13 +650,14 @@ app.post('/api/instagram/publish', async (c) => {
 
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
+  const publishParams = new URLSearchParams({
+    creation_id:  container_id,
+    access_token: account.access_token,
+  });
   const res  = await fetch(`${IG_GRAPH}/${account.platform_user_id}/media_publish`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      creation_id:  container_id,
-      access_token: account.access_token,
-    }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:   publishParams.toString(),
   });
   const data = await res.json();
 
