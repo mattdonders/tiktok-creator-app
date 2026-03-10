@@ -53,6 +53,9 @@ https://creatorpost.app/privacy
 **Direct Post**
 Yes — enabled
 
+**Explain the goal of your application and how Content Posting API integration can be beneficial**
+> The goal of CreatorPost is to remove the manual overhead of publishing videos to TikTok for independent content creators. Many creators produce videos in bulk — using tools like CapCut, HeyGen, or custom pipelines — and need a reliable, programmatic way to get those videos onto TikTok on a schedule without logging in and uploading each one manually. The Content Posting API is the core of CreatorPost's value: without it, the product does not exist. Integration allows creators to authenticate once, then publish directly from their desktop or automated scripts — enabling consistent posting schedules, higher output frequency, and time savings that let them focus on content quality rather than distribution logistics.
+
 **Use case / how will you use the API?**
 > CreatorPost uses the Content Posting API to let authenticated users upload MP4 videos and publish them directly to TikTok. The user connects their TikTok account via OAuth, then uses the dashboard to select a video file, write a caption, configure privacy and interaction settings (comment, duet, stitch), and optionally schedule the post. The app calls the TikTok Direct Post API (`/v2/post/publish/video/init/`) and polls for status confirmation. For users without Direct Post approval, it falls back to the inbox/draft flow (`/v2/post/publish/inbox/video/init/`).
 
