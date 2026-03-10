@@ -59,6 +59,17 @@ Yes - enabled
 **Use case / how will you use the API?**
 > CreatorPost uses the Content Posting API to let authenticated users upload MP4 videos and publish them directly to TikTok. The user connects their TikTok account via OAuth, then uses the dashboard to select a video file, write a caption, configure privacy and interaction settings (comment, duet, stitch), and optionally schedule the post. The app calls the TikTok Direct Post API (`/v2/post/publish/video/init/`) and polls for status confirmation. For users without Direct Post approval, it falls back to the inbox/draft flow (`/v2/post/publish/inbox/video/init/`).
 
+**Please list the API response data fields that your API client will save in its database**
+> From the OAuth token exchange (`/v2/oauth/token/`): `access_token`, `refresh_token`, `expires_in` (stored as `token_expires_at` unix timestamp).
+>
+> From the user info endpoint (`/v2/user/info/`): `open_id` (stored as `platform_user_id`), `display_name`, `avatar_url`.
+>
+> From the publish init endpoint (`/v2/post/publish/video/init/`): `publish_id` (used to poll status).
+>
+> From the publish status endpoint (`/v2/post/publish/status/fetch/`): `video_id` (stored once the post is confirmed published), `status` (mapped to our internal statuses: processing / published / failed).
+>
+> No video content, view counts, or other analytics data is persisted to the database. Video files are held in memory during upload only and never written to disk or stored.
+
 **Daily usage estimate**
 > Approximately 50-150 API calls per day at current scale. The platform has a small base of early-access creators, each posting 1-3 videos per day across 1-2 connected TikTok accounts. Each publish triggers one upload init call, one status poll (or a few if processing takes time), and one creator_info call per session. As the platform grows we expect this to scale to 500-1000 calls per day within 6 months, but initial usage will be well within standard rate limits.
 
