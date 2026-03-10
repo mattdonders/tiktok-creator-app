@@ -777,6 +777,10 @@ app.post('/api/disconnect', async (c) => {
   }
 
   await c.env.DB.prepare(
+    'DELETE FROM posts WHERE account_id = ? AND user_id = ?'
+  ).bind(account_id, session.user_id).run();
+
+  await c.env.DB.prepare(
     'DELETE FROM connected_accounts WHERE id = ? AND user_id = ?'
   ).bind(account_id, session.user_id).run();
 
