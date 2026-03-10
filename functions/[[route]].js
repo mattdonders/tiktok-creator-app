@@ -1155,6 +1155,7 @@ app.get('/api/posts/stats', async (c) => {
   }
 
   const statsMap = {}; // keyed by post UUID
+  const debug    = [];
   for (const [token, rows] of Object.entries(byToken)) {
     const res  = await fetch('https://open.tiktokapis.com/v2/video/query/', {
       method:  'POST',
@@ -1165,6 +1166,7 @@ app.get('/api/posts/stats', async (c) => {
       }),
     });
     const data = await res.json();
+    debug.push({ http_status: res.status, tiktok_response: data, video_ids: rows.map(r => r.video_id) });
     for (const v of data.data?.videos ?? []) {
       const row = rows.find(r => r.video_id === v.id);
       if (row) statsMap[row.id] = {
@@ -1176,7 +1178,7 @@ app.get('/api/posts/stats', async (c) => {
     }
   }
 
-  return c.json(statsMap);
+  return c.json({ ...statsMap, _debug: debug });
 });
 
 // ── API Keys ──────────────────────────────────────────────────────────────────
