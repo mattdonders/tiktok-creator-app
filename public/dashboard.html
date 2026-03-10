@@ -213,8 +213,8 @@
     .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
     .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
 
-    .schedule-fields { display: none; }
-    .schedule-fields.visible { display: block; }
+    .schedule-fields { display: none; padding: 0 !important; }
+    .schedule-fields.visible { display: block; padding: 0 1rem 1rem !important; }
 
     /* ── Upload form inner grid ── */
     .upload-form-inner {
@@ -596,36 +596,37 @@
             </div>
           </div>
 
-          <!-- Row 3: Privacy + Schedule (2 col) -->
-          <div class="upload-form-inner" style="margin-bottom:1rem;align-items:flex-start">
+          <!-- YouTube Settings Panel (shown when YouTube account checked) -->
+          <div id="youtube-panel" class="tt-panel" style="display:none">
+            <div class="tt-panel-title">🎬 YouTube Settings</div>
             <div class="form-group" style="margin-bottom:0">
               <label>Privacy</label>
-              <select class="input" id="privacy" name="privacy">
-                <option value="private">Only Me (Private)</option>
-                <option value="public">Everyone (Public)</option>
+              <select class="input" id="youtube-privacy">
+                <option value="private" selected>Private</option>
                 <option value="unlisted">Unlisted</option>
+                <option value="public">Public</option>
               </select>
-            </div>
-
-            <div class="form-group" style="margin-bottom:0">
-              <label>Schedule</label>
-              <label class="schedule-toggle" style="margin-top:0.1rem">
-                <span class="toggle-switch">
-                  <input type="checkbox" id="schedule-toggle" autocomplete="off" onchange="toggleSchedule(this)" />
-                  <span class="toggle-slider"></span>
-                </span>
-                <span class="toggle-label">Schedule for later</span>
-              </label>
-              <div class="schedule-fields" id="schedule-fields">
-                <div class="form-group" style="margin-top:0.75rem;margin-bottom:0">
-                  <label>Date &amp; Time</label>
-                  <input type="datetime-local" class="input" id="schedule-time" name="schedule_time" />
-                </div>
-              </div>
             </div>
           </div>
 
-          <!-- Row 4: Submit -->
+          <!-- Schedule row -->
+          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:1rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem">
+              <div>
+                <div style="font-size:0.875rem;font-weight:500">Schedule for later</div>
+                <div style="font-size:0.75rem;color:var(--muted);margin-top:0.1rem">Publish at a specific time</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="schedule-toggle" autocomplete="off" onchange="toggleSchedule(this)" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="schedule-fields" id="schedule-fields">
+              <input type="datetime-local" class="input" id="schedule-time" name="schedule_time" />
+            </div>
+          </div>
+
+          <!-- Submit -->
           <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center" id="submit-btn">
             Publish Now
           </button>
@@ -808,17 +809,22 @@
     const tikTokCreatorInfoCache = {};
 
     function updatePlatformPanels() {
-      const checkedIds     = getCheckedAccountIds();
-      const tiktokAccounts = checkedIds.map(id => accounts.find(a => a.id === id))
-        .filter(a => a && (a.platform ?? 'tiktok') === 'tiktok');
+      const checkedAccounts = getCheckedAccountIds()
+        .map(id => accounts.find(a => a.id === id)).filter(Boolean);
 
-      const panel = document.getElementById('tiktok-panel');
+      const tiktokAccounts   = checkedAccounts.filter(a => (a.platform ?? 'tiktok') === 'tiktok');
+      const youtubeAccounts  = checkedAccounts.filter(a => a.platform === 'youtube');
+
+      const ttPanel = document.getElementById('tiktok-panel');
       if (tiktokAccounts.length > 0) {
-        panel.style.display = 'block';
+        ttPanel.style.display = 'block';
         loadAndPopulateTikTokPanel(tiktokAccounts[0].id);
       } else {
-        panel.style.display = 'none';
+        ttPanel.style.display = 'none';
       }
+
+      document.getElementById('youtube-panel').style.display =
+        youtubeAccounts.length > 0 ? 'block' : 'none';
     }
 
     async function loadAndPopulateTikTokPanel(accountId) {
@@ -1039,7 +1045,6 @@
 
       const videoFile  = document.getElementById("video-input").files[0];
       const caption    = document.getElementById("caption").value;
-      const privacy    = document.getElementById("privacy").value;
       const scheduled  = document.getElementById("schedule-toggle").checked;
       const schedTime  = document.getElementById("schedule-time").value;
       const checkedIds = getCheckedAccountIds();
@@ -1061,7 +1066,7 @@
         checkedAccounts.map(acc => {
           const platform = acc.platform ?? 'tiktok';
           if (platform === 'youtube') {
-            return submitYouTube({ acc, videoFile, caption, privacy });
+            return submitYouTube({ acc, videoFile, caption });
           } else if (platform === 'instagram') {
             return submitInstagram({ acc, videoFile, caption, singleUpload });
           } else {
@@ -1167,7 +1172,8 @@
     // ─────────────────────────────────────────────────────────────────────────
     // YouTube upload (browser → Google directly)
     // ─────────────────────────────────────────────────────────────────────────
-    async function submitYouTube({ acc, videoFile, caption, privacy }) {
+    async function submitYouTube({ acc, videoFile, caption }) {
+      const ytPrivacy  = document.getElementById('youtube-privacy')?.value ?? 'private';
       const sessionRes = await fetch('/api/youtube/upload-session', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1175,7 +1181,7 @@
           account_id:     acc.id,
           title:          caption || 'Untitled',
           description:    caption,
-          privacy_status: PRIVACY_MAP.youtube[privacy] ?? 'private',
+          privacy_status: ytPrivacy,
           file_size:      videoFile.size,
           mime_type:      videoFile.type || 'video/mp4',
         }),
@@ -1311,6 +1317,10 @@
         cb.closest('.account-check-row')?.classList.remove('selected');
       });
       updateSubmitBtn();
+
+      // Reset platform panels
+      document.getElementById('youtube-panel').style.display = 'none';
+      document.getElementById('youtube-privacy').value = 'private';
 
       // Reset TikTok panel
       document.getElementById('tiktok-panel').style.display = 'none';
