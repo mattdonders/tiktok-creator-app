@@ -307,6 +307,9 @@ app.get('/callback/instagram', async (c) => {
     return c.redirect('/dashboard?error=token_failed');
   }
 
+  // Log what permissions were actually granted in the OAuth response
+  log(c, { type: 'event', event: 'instagram_permissions_granted', permissions: tokenData.permissions ?? null, user_id: userId });
+
   // Exchange short-lived for long-lived (60 days)
   let longToken = { access_token: tokenData.access_token, expires_in: 3600 };
   try {
