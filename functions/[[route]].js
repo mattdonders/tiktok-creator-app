@@ -836,10 +836,16 @@ app.post('/api/publish', async (c) => {
   try { formData = await c.req.formData(); }
   catch { return c.json({ error: 'Invalid form data' }, 400); }
 
-  const videoFile    = formData.get('video');
-  const caption      = (formData.get('caption') ?? '').slice(0, 2200);
-  const accountId    = formData.get('account_id');
-  const scheduleTime = formData.get('schedule_time') ?? null;
+  const videoFile      = formData.get('video');
+  const caption        = (formData.get('caption') ?? '').slice(0, 2200);
+  const accountId      = formData.get('account_id');
+  const scheduleTime   = formData.get('schedule_time') ?? null;
+  const privacyLevel   = formData.get('privacy_level') ?? 'SELF_ONLY';
+  const disableComment = formData.get('disable_comment') === 'true';
+  const disableDuet    = formData.get('disable_duet') === 'true';
+  const disableStitch  = formData.get('disable_stitch') === 'true';
+  const brandContent   = formData.get('brand_content_toggle') === 'true';
+  const brandOrganic   = formData.get('brand_organic_toggle') === 'true';
 
   if (!videoFile || typeof videoFile === 'string') {
     return c.json({ error: 'No video file provided' }, 400);
@@ -862,10 +868,14 @@ app.post('/api/publish', async (c) => {
     source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1,
   };
   const postInfo = {
-    title: caption, privacy_level: 'PUBLIC_TO_EVERYONE',
-    disable_duet: false, disable_comment: false, disable_stitch: false,
+    title: caption, privacy_level: privacyLevel,
+    disable_duet: disableDuet, disable_comment: disableComment, disable_stitch: disableStitch,
     video_cover_timestamp_ms: 1000,
   };
+  if (brandContent || brandOrganic) {
+    postInfo.brand_content_toggle = brandContent;
+    postInfo.brand_organic_toggle = brandOrganic;
+  }
   if (scheduleTime) {
     postInfo.scheduled_publish_time = Math.floor(new Date(scheduleTime).getTime() / 1000);
   }
@@ -964,6 +974,40 @@ app.get('/api/publish', async (c) => {
   }
 
   return c.json(data.data ?? data);
+});
+
+// ── API — TikTok creator info ─────────────────────────────────────────────────
+
+// GET /api/tiktok/creator_info?account_id=xxx
+// Returns privacy options, interaction flags, max duration for the UI
+app.get('/api/tiktok/creator_info', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json({ error: 'Missing account_id' }, 400);
+
+  const account = await c.env.DB.prepare(
+    'SELECT access_token FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(account_id, session.user_id, 'tiktok').first();
+
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  const res = await fetch('https://open.tiktokapis.com/v2/post/publish/creator_info/', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${account.access_token}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+    },
+  });
+  const data = await res.json();
+
+  if (data.error?.code !== 'ok') {
+    log(c, { type: 'error', event: 'creator_info_failed', account_id, error_code: data.error?.code });
+    return c.json({ error: data.error?.message ?? 'Failed to fetch creator info' }, 502);
+  }
+
+  return c.json(data.data ?? {});
 });
 
 // ── API — posts history ───────────────────────────────────────────────────────

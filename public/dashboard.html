@@ -362,6 +362,93 @@
 
     /* ── Disabled state ── */
     .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+    /* ── Video preview ── */
+    .video-preview-wrap {
+      margin-top: 0.75rem;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid var(--border);
+      display: none;
+    }
+    .video-preview-wrap.visible { display: block; }
+    .video-preview-wrap video {
+      width: 100%;
+      max-height: 260px;
+      display: block;
+      object-fit: contain;
+    }
+
+    /* ── TikTok settings panel ── */
+    .tt-panel {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background: rgba(255,255,255,0.015);
+    }
+    .tt-panel-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #ccc;
+      margin-bottom: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .tt-toggle-group {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .tt-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.55rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+    .tt-toggle-row:last-child { border-bottom: none; }
+    .disclosure-opts {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+    .disclosure-opt {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .disclosure-opt input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      margin-top: 0.15rem;
+    }
+    .consent-text {
+      margin-top: 0.85rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.5;
+      padding: 0.65rem 0.85rem;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .consent-text a { color: var(--accent-light); text-decoration: none; }
+    .consent-text a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -411,6 +498,9 @@
                 <p style="font-size:0.75rem;margin-top:0.25rem">MP4 · Max 50 MB</p>
                 <div class="file-name" id="file-name"></div>
               </div>
+              <div class="video-preview-wrap" id="video-preview-wrap">
+                <video id="video-preview" controls preload="metadata"></video>
+              </div>
             </div>
 
             <div class="form-group" style="margin-bottom:0">
@@ -429,6 +519,81 @@
               maxlength="2200"
               oninput="updateCharCount(this)"></textarea>
             <div class="char-count" id="char-count">0 / 2200</div>
+          </div>
+
+          <!-- TikTok Settings Panel (shown when TikTok account checked) -->
+          <div id="tiktok-panel" class="tt-panel" style="display:none">
+            <div class="tt-panel-title">🎵 TikTok Settings</div>
+
+            <!-- Privacy -->
+            <div class="form-group">
+              <label>Privacy <span style="color:#f87171;font-weight:400;text-transform:none;letter-spacing:normal">*</span></label>
+              <select class="input" id="tiktok-privacy">
+                <option value="" disabled selected>— select privacy level —</option>
+              </select>
+              <div id="tiktok-duration-hint" style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem"></div>
+            </div>
+
+            <!-- Interaction toggles -->
+            <div class="form-group">
+              <label>Allow interactions</label>
+              <div class="tt-toggle-group">
+                <div class="tt-toggle-row">
+                  <span>Comments</span>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="tiktok-allow-comment" autocomplete="off" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="tt-toggle-row">
+                  <span>Duet</span>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="tiktok-allow-duet" autocomplete="off" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="tt-toggle-row">
+                  <span>Stitch</span>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="tiktok-allow-stitch" autocomplete="off" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Commercial content disclosure -->
+            <div class="form-group" style="margin-bottom:0">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.35rem">
+                <label style="margin-bottom:0">Disclose commercial content</label>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tiktok-disclosure-toggle" autocomplete="off" onchange="onDisclosureToggle(this)" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <p style="font-size:0.78rem;color:var(--muted);margin:0 0 0.5rem">Enable if this video is a paid partnership or promotes your own brand.</p>
+              <div id="disclosure-opts" class="disclosure-opts" style="display:none">
+                <label class="disclosure-opt">
+                  <input type="checkbox" id="tiktok-brand-organic" />
+                  <div>
+                    <div style="font-weight:600">Your brand</div>
+                    <div style="font-size:0.75rem;color:var(--muted);margin-top:0.15rem">Promotes yourself, your business, or your personal content</div>
+                  </div>
+                </label>
+                <label class="disclosure-opt">
+                  <input type="checkbox" id="tiktok-brand-content" />
+                  <div>
+                    <div style="font-weight:600">Branded content</div>
+                    <div style="font-size:0.75rem;color:var(--muted);margin-top:0.15rem">Paid partnership — you received compensation to promote a third party</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Consent text -->
+            <div class="consent-text">
+              By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener">Music Usage Confirmation</a>.
+            </div>
           </div>
 
           <!-- Row 3: Privacy + Schedule (2 col) -->
@@ -630,10 +795,86 @@
     function onCheckboxChange(cb) {
       cb.closest('.account-check-row').classList.toggle('selected', cb.checked);
       updateSubmitBtn();
+      updatePlatformPanels();
     }
 
     function getCheckedAccountIds() {
       return [...document.querySelectorAll('.acct-cb:checked')].map(cb => cb.value);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TikTok platform panel
+    // ─────────────────────────────────────────────────────────────────────────
+    const tikTokCreatorInfoCache = {};
+
+    function updatePlatformPanels() {
+      const checkedIds     = getCheckedAccountIds();
+      const tiktokAccounts = checkedIds.map(id => accounts.find(a => a.id === id))
+        .filter(a => a && (a.platform ?? 'tiktok') === 'tiktok');
+
+      const panel = document.getElementById('tiktok-panel');
+      if (tiktokAccounts.length > 0) {
+        panel.style.display = 'block';
+        loadAndPopulateTikTokPanel(tiktokAccounts[0].id);
+      } else {
+        panel.style.display = 'none';
+      }
+    }
+
+    async function loadAndPopulateTikTokPanel(accountId) {
+      const privacyEl  = document.getElementById('tiktok-privacy');
+      const hintEl     = document.getElementById('tiktok-duration-hint');
+      const commentEl  = document.getElementById('tiktok-allow-comment');
+      const duetEl     = document.getElementById('tiktok-allow-duet');
+      const stitchEl   = document.getElementById('tiktok-allow-stitch');
+
+      // Only reload if not cached
+      if (!tikTokCreatorInfoCache[accountId]) {
+        privacyEl.innerHTML = '<option value="" disabled selected>Loading…</option>';
+        try {
+          const res = await fetch(`/api/tiktok/creator_info?account_id=${encodeURIComponent(accountId)}`);
+          if (res.ok) tikTokCreatorInfoCache[accountId] = await res.json();
+        } catch { /* ignore — fall through to defaults */ }
+      }
+
+      const info = tikTokCreatorInfoCache[accountId] ?? {};
+
+      // Populate privacy options
+      const opts = info.privacy_level_options;
+      const PRIVACY_LABELS = {
+        PUBLIC_TO_EVERYONE:    'Public — Everyone',
+        MUTUAL_FOLLOW_FRIENDS: 'Friends — Followers you follow back',
+        FOLLOWER_OF_CREATOR:   'Followers',
+        SELF_ONLY:             'Only Me',
+      };
+      if (opts?.length) {
+        privacyEl.innerHTML = '<option value="" disabled selected>— select privacy level —</option>' +
+          opts.map(o => `<option value="${escHtml(o)}">${escHtml(PRIVACY_LABELS[o] ?? o)}</option>`).join('');
+      } else {
+        privacyEl.innerHTML = `
+          <option value="" disabled selected>— select privacy level —</option>
+          <option value="PUBLIC_TO_EVERYONE">Public — Everyone</option>
+          <option value="MUTUAL_FOLLOW_FRIENDS">Friends — Followers you follow back</option>
+          <option value="FOLLOWER_OF_CREATOR">Followers</option>
+          <option value="SELF_ONLY">Only Me</option>`;
+      }
+
+      // Interaction constraints from creator_info
+      commentEl.disabled = !!info.comment_disabled;
+      duetEl.disabled    = !!info.duet_disabled;
+      stitchEl.disabled  = !!info.stitch_disabled;
+      if (info.comment_disabled) commentEl.checked = false;
+      if (info.duet_disabled)    duetEl.checked    = false;
+      if (info.stitch_disabled)  stitchEl.checked  = false;
+
+      // Duration hint
+      hintEl.textContent = info.max_video_post_duration_sec
+        ? `Max video length: ${info.max_video_post_duration_sec}s`
+        : '';
+    }
+
+    function onDisclosureToggle(el) {
+      document.getElementById('disclosure-opts').style.display = el.checked ? 'flex' : 'none';
     }
 
     function updateSubmitBtn() {
@@ -724,8 +965,21 @@
     });
 
     function onFileSelect(input) {
-      const file = input.files[0];
+      const file        = input.files[0];
+      const previewWrap = document.getElementById('video-preview-wrap');
+      const preview     = document.getElementById('video-preview');
+
       document.getElementById("file-name").textContent = file ? `✓ ${file.name}` : "";
+
+      if (file && file.type.startsWith('video/')) {
+        if (preview._objectUrl) URL.revokeObjectURL(preview._objectUrl);
+        preview._objectUrl = URL.createObjectURL(file);
+        preview.src = preview._objectUrl;
+        previewWrap.classList.add('visible');
+      } else {
+        preview.src = '';
+        previewWrap.classList.remove('visible');
+      }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -811,7 +1065,7 @@
           } else if (platform === 'instagram') {
             return submitInstagram({ acc, videoFile, caption, singleUpload });
           } else {
-            return submitTikTok({ acc, videoFile, caption, privacy, scheduled, schedTime });
+            return submitTikTok({ acc, videoFile, caption, scheduled, schedTime });
           }
         })
       );
@@ -846,12 +1100,41 @@
     // ─────────────────────────────────────────────────────────────────────────
     // TikTok upload
     // ─────────────────────────────────────────────────────────────────────────
-    async function submitTikTok({ acc, videoFile, caption, privacy, scheduled, schedTime }) {
+    async function submitTikTok({ acc, videoFile, caption, scheduled, schedTime }) {
+      // Validate TikTok-specific required fields
+      const tiktokPrivacy = document.getElementById('tiktok-privacy').value;
+      if (!tiktokPrivacy) throw new Error('Select a privacy level in TikTok Settings before posting.');
+
+      const allowComment = document.getElementById('tiktok-allow-comment').checked;
+      const allowDuet    = document.getElementById('tiktok-allow-duet').checked;
+      const allowStitch  = document.getElementById('tiktok-allow-stitch').checked;
+      const disclosure   = document.getElementById('tiktok-disclosure-toggle').checked;
+      const brandOrganic = document.getElementById('tiktok-brand-organic').checked;
+      const brandContent = document.getElementById('tiktok-brand-content').checked;
+
+      if (disclosure && !brandOrganic && !brandContent) {
+        throw new Error('Select at least one disclosure option (Your brand or Branded content).');
+      }
+
+      // Duration check
+      const preview = document.getElementById('video-preview');
+      const maxDur  = tikTokCreatorInfoCache[acc.id]?.max_video_post_duration_sec ?? null;
+      if (maxDur && preview.duration && preview.duration > maxDur) {
+        throw new Error(`Video is too long for this account (max ${maxDur}s, yours is ${Math.round(preview.duration)}s).`);
+      }
+
       const form = new FormData();
-      form.append("video",      videoFile);
-      form.append("caption",    caption);
-      form.append("account_id", acc.id);
-      form.append("privacy",    PRIVACY_MAP.tiktok[privacy] ?? 'SELF_ONLY');
+      form.append("video",           videoFile);
+      form.append("caption",         caption);
+      form.append("account_id",      acc.id);
+      form.append("privacy_level",   tiktokPrivacy);
+      form.append("disable_comment", String(!allowComment));
+      form.append("disable_duet",    String(!allowDuet));
+      form.append("disable_stitch",  String(!allowStitch));
+      if (disclosure) {
+        form.append("brand_content_toggle", String(brandContent));
+        form.append("brand_organic_toggle", String(brandOrganic));
+      }
       if (scheduled && schedTime) form.append("schedule_time", new Date(schedTime).toISOString());
 
       const res  = await fetch("/api/publish", { method: "POST", body: form });
@@ -1028,6 +1311,30 @@
         cb.closest('.account-check-row')?.classList.remove('selected');
       });
       updateSubmitBtn();
+
+      // Reset TikTok panel
+      document.getElementById('tiktok-panel').style.display = 'none';
+      document.getElementById('tiktok-privacy').innerHTML = '<option value="" disabled selected>— select privacy level —</option>';
+      document.getElementById('tiktok-duration-hint').textContent = '';
+      ['tiktok-allow-comment','tiktok-allow-duet','tiktok-allow-stitch'].forEach(id => {
+        const el = document.getElementById(id);
+        el.checked  = false;
+        el.disabled = false;
+      });
+      document.getElementById('tiktok-disclosure-toggle').checked = false;
+      document.getElementById('disclosure-opts').style.display = 'none';
+      document.getElementById('tiktok-brand-organic').checked = false;
+      document.getElementById('tiktok-brand-content').checked = false;
+
+      // Clear video preview
+      const previewWrap = document.getElementById('video-preview-wrap');
+      const preview     = document.getElementById('video-preview');
+      previewWrap.classList.remove('visible');
+      if (preview._objectUrl) { URL.revokeObjectURL(preview._objectUrl); preview._objectUrl = null; }
+      preview.src = '';
+
+      // Clear creator info cache so next selection re-fetches
+      Object.keys(tikTokCreatorInfoCache).forEach(k => delete tikTokCreatorInfoCache[k]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
