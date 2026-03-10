@@ -371,6 +371,30 @@
     /* ── Disabled state ── */
     .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 1.75rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(120%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-size: 0.875rem;
+      z-index: 9999;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+      pointer-events: none;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+    .toast.error { color: #f87171; border-color: rgba(248,113,113,0.4); }
+
     /* ── Video preview ── */
     .video-preview-wrap {
       margin-top: 0.75rem;
@@ -701,6 +725,8 @@
     </div><!-- /dash-stack -->
   </div><!-- /dash-layout -->
 
+  <div id="toast" class="toast"></div>
+
   <script>
     // ─────────────────────────────────────────────────────────────────────────
     // State
@@ -993,12 +1019,29 @@
     });
 
     function setVideoFile(file) {
-      if (!file || !file.type.startsWith("video/")) return;
+      if (!file) return;
+      if (!file.type.startsWith("video/")) {
+        showToast(`"${file.name}" isn't a video file — please drop an MP4.`);
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        showToast(`File too large (${(file.size / 1024 / 1024).toFixed(0)} MB) — max is 50 MB.`);
+        return;
+      }
       const input = document.getElementById("video-input");
       const dt    = new DataTransfer();
       dt.items.add(file);
       input.files = dt.files;
       onFileSelect(input);
+    }
+
+    let _toastTimer;
+    function showToast(msg, type = 'error') {
+      const el  = document.getElementById('toast');
+      el.textContent = msg;
+      el.className   = `toast ${type} show`;
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
     }
 
     function onFileSelect(input) {
