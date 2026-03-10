@@ -499,15 +499,27 @@
           <div class="upload-form-inner" style="margin-bottom:1rem">
             <div class="form-group" style="margin-bottom:0">
               <label>Video File</label>
-              <div class="drop-zone" id="drop-zone">
-                <input type="file" id="video-input" name="video" accept="video/*" onchange="onFileSelect(this)" />
+              <!-- Hidden file input — always in DOM, triggered by drop zone click or Change button -->
+              <input type="file" id="video-input" name="video" accept="video/*"
+                     style="position:absolute;opacity:0;width:0;height:0;pointer-events:none"
+                     onchange="onFileSelect(this)" />
+              <!-- Drop zone — shown before a file is selected -->
+              <div class="drop-zone" id="drop-zone" onclick="document.getElementById('video-input').click()">
                 <div class="drop-zone-icon">🎬</div>
                 <p>Drop your video here or <strong>browse</strong></p>
                 <p style="font-size:0.75rem;margin-top:0.25rem">MP4 · Max 50 MB</p>
-                <div class="file-name" id="file-name"></div>
               </div>
+              <!-- Preview — replaces drop zone once a file is picked -->
               <div class="video-preview-wrap" id="video-preview-wrap">
                 <video id="video-preview" controls preload="metadata"></video>
+                <div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;border-top:1px solid var(--border);background:var(--surface)">
+                  <span id="preview-filename" style="flex:1;font-size:0.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0"></span>
+                  <button type="button"
+                          onclick="document.getElementById('video-input').click()"
+                          style="font-size:0.75rem;color:var(--muted);background:none;border:1px solid var(--border);padding:0.25rem 0.65rem;border-radius:5px;cursor:pointer;flex-shrink:0;white-space:nowrap">
+                    Change
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -967,30 +979,44 @@
     dropZone.addEventListener("drop", e => {
       e.preventDefault();
       dropZone.classList.remove("dragover");
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith("video/")) {
-        const input = document.getElementById("video-input");
-        const dt    = new DataTransfer();
-        dt.items.add(file);
-        input.files = dt.files;
-        onFileSelect(input);
-      }
+      setVideoFile(e.dataTransfer.files[0]);
     });
+
+    // Also accept drops onto the preview (swap video)
+    const previewWrapEl = document.getElementById("video-preview-wrap");
+    previewWrapEl.addEventListener("dragover", e => { e.preventDefault(); previewWrapEl.style.outline = '2px solid var(--accent)'; });
+    previewWrapEl.addEventListener("dragleave", () => { previewWrapEl.style.outline = ''; });
+    previewWrapEl.addEventListener("drop", e => {
+      e.preventDefault();
+      previewWrapEl.style.outline = '';
+      setVideoFile(e.dataTransfer.files[0]);
+    });
+
+    function setVideoFile(file) {
+      if (!file || !file.type.startsWith("video/")) return;
+      const input = document.getElementById("video-input");
+      const dt    = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      onFileSelect(input);
+    }
 
     function onFileSelect(input) {
       const file        = input.files[0];
+      const dropZone    = document.getElementById('drop-zone');
       const previewWrap = document.getElementById('video-preview-wrap');
       const preview     = document.getElementById('video-preview');
-
-      document.getElementById("file-name").textContent = file ? `✓ ${file.name}` : "";
 
       if (file && file.type.startsWith('video/')) {
         if (preview._objectUrl) URL.revokeObjectURL(preview._objectUrl);
         preview._objectUrl = URL.createObjectURL(file);
         preview.src = preview._objectUrl;
+        document.getElementById('preview-filename').textContent = file.name;
+        dropZone.style.display    = 'none';
         previewWrap.classList.add('visible');
       } else {
         preview.src = '';
+        dropZone.style.display = '';
         previewWrap.classList.remove('visible');
       }
     }
@@ -1343,12 +1369,15 @@
       document.getElementById('tiktok-brand-organic').checked = false;
       document.getElementById('tiktok-brand-content').checked = false;
 
-      // Clear video preview
+      // Restore drop zone, clear preview
       const previewWrap = document.getElementById('video-preview-wrap');
       const preview     = document.getElementById('video-preview');
       previewWrap.classList.remove('visible');
+      document.getElementById('drop-zone').style.display = '';
+      document.getElementById('preview-filename').textContent = '';
       if (preview._objectUrl) { URL.revokeObjectURL(preview._objectUrl); preview._objectUrl = null; }
       preview.src = '';
+      document.getElementById('video-input').value = '';
 
       // Clear creator info cache so next selection re-fetches
       Object.keys(tikTokCreatorInfoCache).forEach(k => delete tikTokCreatorInfoCache[k]);
