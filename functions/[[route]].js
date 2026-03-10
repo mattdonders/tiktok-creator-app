@@ -460,7 +460,7 @@ app.post('/api/youtube/complete', async (c) => {
 
 // ── API — Instagram upload ─────────────────────────────────────────────────────
 
-const IG_GRAPH = 'https://graph.instagram.com/v23.0';
+const IG_GRAPH = 'https://graph.instagram.com/v21.0';
 
 // Best-effort cleanup of expired R2 temp videos (called opportunistically)
 async function cleanupExpiredR2(bucket) {
