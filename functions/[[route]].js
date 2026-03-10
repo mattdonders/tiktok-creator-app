@@ -326,7 +326,9 @@ app.get('/callback/instagram', async (c) => {
     log(c, { type: 'error', event: 'instagram_profile_fetch_failed', message: err.message, user_id: userId });
   }
 
-  const igUserId  = String(tokenData.user_id ?? profile.id ?? '');
+  // Use app-scoped 'id' from /me (NOT tokenData.user_id which is Facebook-linked)
+  // Required for graph.instagram.com API calls — matches faceless-instagram reference impl
+  const igUserId  = String(profile.id ?? tokenData.user_id ?? '');
   const expiresAt = longToken.expires_in ? now() + longToken.expires_in : null;
   const accountId = newId();
 
