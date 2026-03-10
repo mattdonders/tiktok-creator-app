@@ -711,21 +711,6 @@
         </div>
       </div>
 
-      <!-- API Keys -->
-      <div class="card">
-        <div class="card-title"><span class="icon">🔑</span> API Keys</div>
-        <p style="color:var(--muted);font-size:0.85rem;margin:0 0 1rem">Post programmatically from scripts and pipelines using a Bearer token.</p>
-        <div id="api-keys-list" style="margin-bottom:1rem"></div>
-        <div id="new-key-reveal" style="display:none;background:var(--surface2);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem">
-          <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.4rem">New key — copy now, won't be shown again:</div>
-          <div style="display:flex;align-items:center;gap:0.5rem">
-            <code id="new-key-value" style="flex:1;font-family:monospace;font-size:0.82rem;word-break:break-all;color:var(--accent)"></code>
-            <button class="btn btn-outline" style="white-space:nowrap;padding:0.3rem 0.7rem;font-size:0.8rem" onclick="copyNewKey()">Copy</button>
-          </div>
-        </div>
-        <button class="btn btn-outline" onclick="generateApiKey()">+ Generate API Key</button>
-      </div>
-
     </div><!-- /dash-stack -->
   </div><!-- /dash-layout -->
 
@@ -750,7 +735,6 @@
 
       await loadProfile();
       await loadPosts();
-      loadApiKeys();
       setDefaultScheduleTime();
     });
 
@@ -1602,54 +1586,6 @@
       } catch { /* stats are non-critical */ }
     }
 
-    // ── API Keys ──────────────────────────────────────────────────────────────
-
-    async function loadApiKeys() {
-      const res  = await fetch('/api/keys');
-      const keys = await res.json();
-      const list = document.getElementById('api-keys-list');
-      if (!keys.length) {
-        list.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">No API keys yet.</div>';
-        return;
-      }
-      list.innerHTML = keys.map(k => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--border)">
-          <div>
-            <code style="font-family:monospace;font-size:0.85rem">${escHtml(k.key_prefix)}...</code>
-            ${k.label ? `<span style="color:var(--muted);font-size:0.8rem;margin-left:0.5rem">${escHtml(k.label)}</span>` : ''}
-            <div style="color:var(--muted);font-size:0.75rem;margin-top:0.15rem">
-              Created ${new Date(k.created_at * 1000).toLocaleDateString()}
-              ${k.last_used_at ? ` · Last used ${new Date(k.last_used_at * 1000).toLocaleDateString()}` : ''}
-            </div>
-          </div>
-          <button class="btn btn-outline" style="padding:0.25rem 0.6rem;font-size:0.78rem;color:#f87171" onclick="revokeApiKey('${escHtml(k.id)}')">Revoke</button>
-        </div>
-      `).join('');
-    }
-
-    async function generateApiKey() {
-      const label = prompt('Label for this key (optional, e.g. "faceless-pipeline"):') ?? '';
-      const res   = await fetch('/api/keys', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ label: label.trim() || null }),
-      });
-      const data = await res.json();
-      document.getElementById('new-key-value').textContent = data.key;
-      document.getElementById('new-key-reveal').style.display = 'block';
-      loadApiKeys();
-    }
-
-    function copyNewKey() {
-      const key = document.getElementById('new-key-value').textContent;
-      navigator.clipboard.writeText(key);
-    }
-
-    async function revokeApiKey(id) {
-      if (!confirm('Revoke this API key? Any scripts using it will stop working.')) return;
-      await fetch(`/api/keys/${id}`, { method: 'DELETE' });
-      loadApiKeys();
-    }
   </script>
 
 </body>
