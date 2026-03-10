@@ -36,23 +36,6 @@ CreatorPost
 **Client Key**
 *(copy from TikTok Developer Portal -> App -> Client Key)*
 
-**Redirect URI**
-https://creatorpost.app/auth/tiktok/callback
-
-**Privacy Policy URL**
-https://creatorpost.app/privacy
-
-**Scopes requested**
-- `user.info.basic`
-- `user.info.profile`
-- `user.info.stats`
-- `video.upload`
-- `video.publish`
-- `video.list`
-
-**Direct Post**
-Yes - enabled
-
 **Explain the goal of your application and how Content Posting API integration can be beneficial**
 > The goal of CreatorPost is to remove the manual overhead of publishing videos to TikTok for independent content creators. Many creators produce videos in bulk using tools like CapCut, HeyGen, or custom pipelines and need a reliable, programmatic way to get those videos onto TikTok on a schedule without logging in and uploading each one manually. The Content Posting API is the core of CreatorPost's value: without it, the product does not exist. Integration allows creators to authenticate once, then publish directly from their desktop or automated scripts, enabling consistent posting schedules, higher output frequency, and time savings that let them focus on content quality rather than distribution logistics.
 
@@ -70,8 +53,8 @@ Yes - enabled
 >
 > No video content, view counts, or other analytics data is persisted to the database. Video files are held in memory during upload only and never written to disk or stored.
 
-**Daily usage estimate**
-> Approximately 50-150 API calls per day at current scale. The platform has a small base of early-access creators, each posting 1-3 videos per day across 1-2 connected TikTok accounts. Each publish triggers one upload init call, one status poll (or a few if processing takes time), and one creator_info call per session. As the platform grows we expect this to scale to 500-1000 calls per day within 6 months, but initial usage will be well within standard rate limits.
+**Approximately how many users use your API client(s) to publish videos to TikTok on a daily basis?**
+*(dropdown - select "Less than 100")*
 
 **Explain how you determined the daily usage estimate**
 > The estimate is based on the current number of active CreatorPost users (under 50 at early-access launch) multiplied by their expected posting frequency. Independent short-form creators typically publish 1-3 videos per day. Each video publish requires: one `/v2/post/publish/video/init/` call, one or two `/v2/post/publish/status/fetch/` polls, and one `/v2/post/publish/creator_info/` call per session. At 50 users posting an average of 2 videos per day that yields roughly 300-400 API calls per day. We used 50-150 as a conservative lower bound to reflect that not all users are active daily at this stage.
