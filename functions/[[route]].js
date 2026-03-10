@@ -60,6 +60,26 @@ app.onError((err, c) => {
 function newId() { return crypto.randomUUID(); }
 function now()   { return Math.floor(Date.now() / 1000); }
 
+async function hashKey(rawKey) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function getApiKeySession(c) {
+  const auth = c.req.header('Authorization') ?? '';
+  if (!auth.startsWith('Bearer cp_')) return null;
+  const keyHash = await hashKey(auth.slice(7));
+  const row = await c.env.DB.prepare(
+    'SELECT id, user_id FROM api_keys WHERE key_hash = ?'
+  ).bind(keyHash).first();
+  if (!row) return null;
+  c.executionCtx.waitUntil(
+    c.env.DB.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').bind(now(), row.id).run()
+  );
+  c.set('log_user_id', row.user_id);
+  return { user_id: row.user_id };
+}
+
 const SESSION_TTL = 30 * 24 * 60 * 60;  // 30 days
 const MAGIC_TTL   = 15 * 60;            // 15 minutes
 
@@ -1102,6 +1122,143 @@ async function sendMagicLink(email, link, env) {
     }),
   });
 }
+
+// ── API Keys ──────────────────────────────────────────────────────────────────
+
+app.post('/api/keys', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { label } = await c.req.json().catch(() => ({}));
+
+  const bytes  = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  const rawKey  = `cp_${Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')}`;
+  const keyHash = await hashKey(rawKey);
+  const prefix  = rawKey.slice(0, 12); // "cp_" + 9 chars for display
+
+  await c.env.DB.prepare(
+    'INSERT INTO api_keys (id, user_id, key_hash, key_prefix, label, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(newId(), session.user_id, keyHash, prefix, label ?? null, now()).run();
+
+  return c.json({ key: rawKey, prefix, label: label ?? null });
+});
+
+app.get('/api/keys', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, key_prefix, label, created_at, last_used_at FROM api_keys WHERE user_id = ? ORDER BY created_at DESC'
+  ).bind(session.user_id).all();
+
+  return c.json(results);
+});
+
+app.delete('/api/keys/:id', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  await c.env.DB.prepare(
+    'DELETE FROM api_keys WHERE id = ? AND user_id = ?'
+  ).bind(c.req.param('id'), session.user_id).run();
+
+  return c.json({ ok: true });
+});
+
+// ── Public API v1 (Bearer key auth) ──────────────────────────────────────────
+
+app.get('/api/v1/accounts', async (c) => {
+  const session = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, platform, display_name, platform_user_id FROM connected_accounts WHERE user_id = ? ORDER BY platform, display_name'
+  ).bind(session.user_id).all();
+
+  return c.json(results);
+});
+
+app.post('/api/v1/publish', async (c) => {
+  const session = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  let formData;
+  try { formData = await c.req.formData(); }
+  catch { return c.json({ error: 'Invalid form data' }, 400); }
+
+  const videoFile   = formData.get('video');
+  const videoUrl    = formData.get('video_url') ?? null;
+  const caption     = (formData.get('caption') ?? '').slice(0, 2200);
+  const accountId   = formData.get('account_id') ?? null;
+  const accountName = formData.get('account') ?? null;
+  const platform    = formData.get('platform') ?? 'tiktok';
+
+  if (!videoFile && !videoUrl) return c.json({ error: 'Provide video file or video_url' }, 400);
+
+  // Look up account by id or display_name
+  const account = accountId
+    ? await c.env.DB.prepare('SELECT * FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?').bind(accountId, session.user_id, platform).first()
+    : await c.env.DB.prepare('SELECT * FROM connected_accounts WHERE display_name = ? AND user_id = ? AND platform = ?').bind(accountName, session.user_id, platform).first();
+
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  // Resolve video URL — upload file to R2 if needed
+  let finalVideoUrl = videoUrl;
+  if (videoFile && typeof videoFile !== 'string') {
+    const videoBytes = await videoFile.arrayBuffer();
+    const r2Key = `api-uploads/${newId()}/${videoFile.name || 'video.mp4'}`;
+    await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
+      httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
+      customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
+    });
+    finalVideoUrl = `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
+  }
+
+  // TikTok: PULL_FROM_URL (no chunked upload needed)
+  const sourceInfo = { source: 'PULL_FROM_URL', video_url: finalVideoUrl };
+  const postInfo   = {
+    title: caption, privacy_level: 'PUBLIC_TO_EVERYONE',
+    disable_duet: false, disable_comment: false, disable_stitch: false,
+    video_cover_timestamp_ms: 1000,
+  };
+
+  let initRes = await fetch(TIKTOK_INIT_URL, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+    body:    JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
+  });
+  let initData  = await initRes.json();
+  let usedInbox = false;
+
+  if (!initRes.ok || initData.error?.code !== 'ok') {
+    initRes = await fetch(TIKTOK_INBOX_INIT_URL, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+      body:    JSON.stringify({ source_info: sourceInfo }),
+    });
+    initData  = await initRes.json();
+    usedInbox = true;
+  }
+
+  if (!initRes.ok || initData.error?.code !== 'ok') {
+    const tiktokCode = initData.error?.code;
+    log(c, { type: 'error', event: 'api_publish_failed', platform, tiktok_error: tiktokCode, user_id: session.user_id });
+    return c.json({ error: initData.error?.message ?? 'TikTok init failed', tiktok_raw: initData }, 500);
+  }
+
+  const { publish_id } = initData.data;
+  const postId = newId();
+
+  await c.env.DB.prepare(`
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
+    VALUES (?, ?, ?, ?, ?, 'processing', ?, ?)
+  `).bind(postId, session.user_id, account.id, platform, caption, publish_id, now()).run();
+
+  log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox });
+
+  return c.json({ publish_id, post_id: postId, inbox: usedInbox });
+});
 
 // ── Export for Cloudflare Pages ───────────────────────────────────────────────
 

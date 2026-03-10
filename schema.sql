@@ -45,8 +45,20 @@ CREATE TABLE IF NOT EXISTS posts (
   created_at   INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS api_keys (
+  id           TEXT    PRIMARY KEY,
+  user_id      TEXT    NOT NULL REFERENCES users(id),
+  key_hash     TEXT    NOT NULL UNIQUE,
+  key_prefix   TEXT    NOT NULL,
+  label        TEXT,
+  created_at   INTEGER NOT NULL,
+  last_used_at INTEGER
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_accounts_user     ON connected_accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_user        ON posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_account     ON posts(account_id);
 CREATE INDEX IF NOT EXISTS idx_magic_links_email ON magic_links(email);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user     ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash     ON api_keys(key_hash);
