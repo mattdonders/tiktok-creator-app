@@ -9,7 +9,7 @@
   <style>
     /* ── Layout ── */
     .dash-layout {
-      max-width: 900px;
+      max-width: 1100px;
       margin: 0 auto;
       padding: 2.5rem 2rem 5rem;
     }
@@ -128,7 +128,7 @@
       font-size: 0.9rem;
       padding: 0.65rem 1rem;
       resize: vertical;
-      min-height: 80px;
+      min-height: 130px;
       font-family: inherit;
       transition: border-color 0.15s;
       box-sizing: border-box;
@@ -189,6 +189,14 @@
       width: 40px;
       height: 22px;
       flex-shrink: 0;
+      /* neutralise .form-group label bleed */
+      display: block !important;
+      font-size: initial !important;
+      font-weight: initial !important;
+      color: initial !important;
+      margin-bottom: 0 !important;
+      letter-spacing: normal !important;
+      text-transform: none !important;
     }
     .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
     .toggle-slider {
@@ -534,45 +542,44 @@
               <div id="tiktok-duration-hint" style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem"></div>
             </div>
 
-            <!-- Interaction toggles -->
-            <div class="form-group">
-              <label>Allow interactions</label>
+            <!-- All 4 toggles in one unified group -->
+            <div class="form-group" style="margin-bottom:0">
               <div class="tt-toggle-group">
                 <div class="tt-toggle-row">
-                  <span>Comments</span>
+                  <span>Allow comments</span>
                   <label class="toggle-switch">
                     <input type="checkbox" id="tiktok-allow-comment" autocomplete="off" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
                 <div class="tt-toggle-row">
-                  <span>Duet</span>
+                  <span>Allow duet</span>
                   <label class="toggle-switch">
                     <input type="checkbox" id="tiktok-allow-duet" autocomplete="off" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
                 <div class="tt-toggle-row">
-                  <span>Stitch</span>
+                  <span>Allow stitch</span>
                   <label class="toggle-switch">
                     <input type="checkbox" id="tiktok-allow-stitch" autocomplete="off" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
+                <div class="tt-toggle-row" style="align-items:flex-start;padding-top:0.7rem;padding-bottom:0.7rem">
+                  <div>
+                    <div style="font-size:0.875rem">Disclose commercial content</div>
+                    <div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;line-height:1.4;max-width:340px">Enable if this is a paid partnership or promotes your brand</div>
+                  </div>
+                  <label class="toggle-switch" style="margin-top:0.1rem">
+                    <input type="checkbox" id="tiktok-disclosure-toggle" autocomplete="off" onchange="onDisclosureToggle(this)" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
               </div>
-            </div>
 
-            <!-- Commercial content disclosure -->
-            <div class="form-group" style="margin-bottom:0">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.35rem">
-                <label style="margin-bottom:0">Disclose commercial content</label>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tiktok-disclosure-toggle" autocomplete="off" onchange="onDisclosureToggle(this)" />
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-              <p style="font-size:0.78rem;color:var(--muted);margin:0 0 0.5rem">Enable if this video is a paid partnership or promotes your own brand.</p>
-              <div id="disclosure-opts" class="disclosure-opts" style="display:none">
+              <!-- Disclosure options (shown when disclosure toggled on) -->
+              <div id="disclosure-opts" class="disclosure-opts" style="display:none;margin-top:0.75rem">
                 <label class="disclosure-opt">
                   <input type="checkbox" id="tiktok-brand-organic" />
                   <div>
