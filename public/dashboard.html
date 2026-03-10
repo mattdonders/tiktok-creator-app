@@ -374,7 +374,7 @@
     /* ── Toast ── */
     .toast {
       position: fixed;
-      top: 4.5rem;
+      top: 5rem; /* overridden by JS to nav height + 12px */
       right: 1.5rem;
       transform: translateY(-12px);
       background: var(--surface);
@@ -1038,6 +1038,9 @@
     let _toastTimer;
     function showToast(msg, type = 'error') {
       const el  = document.getElementById('toast');
+      // Position 12px below the sticky nav regardless of its actual height
+      const nav = document.querySelector('nav');
+      el.style.top = ((nav?.offsetHeight ?? 60) + 12) + 'px';
       el.textContent = msg;
       el.className   = `toast ${type} show`;
       clearTimeout(_toastTimer);
