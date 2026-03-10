@@ -2,7 +2,7 @@
 
 Reference doc for re-submitting at: https://developers.tiktok.com/application/content-posting-api
 
-Last submitted: 2026-03-10 (resubmission for Direct Post access)
+Last submitted: 2026-03-10 (resubmission for Direct Post access, 2nd attempt — all 5 UX compliance points implemented, demo video included)
 
 ---
 
