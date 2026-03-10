@@ -698,7 +698,11 @@
               </label>
             </div>
             <div class="schedule-fields" id="schedule-fields">
-              <input type="datetime-local" class="input" id="schedule-time" name="schedule_time" />
+              <input type="datetime-local" class="input" id="schedule-time" name="schedule_time" style="margin-bottom:0.65rem" />
+              <div id="best-times-row" style="display:none">
+                <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:0.45rem">Suggested times (your local time)</div>
+                <div id="best-times-chips" style="display:flex;flex-wrap:wrap;gap:0.4rem"></div>
+              </div>
             </div>
           </div>
 
@@ -870,6 +874,7 @@
       cb.closest('.account-check-row').classList.toggle('selected', cb.checked);
       updateSubmitBtn();
       updatePlatformPanels();
+      renderBestTimes();
     }
 
     function getCheckedAccountIds() {
@@ -1109,6 +1114,7 @@
     // ─────────────────────────────────────────────────────────────────────────
     function toggleSchedule(checkbox) {
       document.getElementById("schedule-fields").classList.toggle("visible", checkbox.checked);
+      renderBestTimes();
       updateSubmitBtn();
     }
 
@@ -1614,6 +1620,75 @@
             <span>↗ ${fmtNum(s.shares)}</span>`;
         }
       } catch { /* stats are non-critical */ }
+    }
+
+    // ── Best Times to Post ────────────────────────────────────────────────────
+    // Data sourced from Sprout Social, Buffer, Hootsuite, SocialPilot (2025)
+    // Times are audience-local — show in user's browser timezone
+
+    const BEST_TIMES = {
+      tiktok: [
+        { day: 'Sunday',    hour: 9,  label: 'Sun 9am'  },
+        { day: 'Tuesday',   hour: 9,  label: 'Tue 9am'  },
+        { day: 'Wednesday', hour: 14, label: 'Wed 2pm'  },
+        { day: 'Thursday',  hour: 8,  label: 'Thu 8am'  },
+      ],
+      instagram: [
+        { day: 'Tuesday',   hour: 6,  label: 'Tue 6am'  },
+        { day: 'Tuesday',   hour: 15, label: 'Tue 3pm'  },
+        { day: 'Wednesday', hour: 17, label: 'Wed 5pm'  },
+        { day: 'Thursday',  hour: 16, label: 'Thu 4pm'  },
+      ],
+      youtube: [
+        { day: 'Wednesday', hour: 16, label: 'Wed 4pm'  },
+        { day: 'Thursday',  hour: 16, label: 'Thu 4pm'  },
+        { day: 'Saturday',  hour: 16, label: 'Sat 4pm'  },
+        { day: 'Sunday',    hour: 10, label: 'Sun 10am' },
+      ],
+    };
+
+    function nextOccurrence(dayName, hour) {
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const target = days.indexOf(dayName);
+      const now    = new Date();
+      const result = new Date(now);
+      result.setHours(hour, 0, 0, 0);
+      let diff = target - now.getDay();
+      if (diff < 0 || (diff === 0 && now.getHours() >= hour)) diff += 7;
+      result.setDate(result.getDate() + diff);
+      return result;
+    }
+
+    function toDatetimeLocal(d) {
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:00`;
+    }
+
+    function renderBestTimes() {
+      const row   = document.getElementById('best-times-row');
+      const chips = document.getElementById('best-times-chips');
+      if (!document.getElementById('schedule-toggle').checked) { row.style.display = 'none'; return; }
+
+      const checkedAccounts = getCheckedAccountIds()
+        .map(id => accounts.find(a => a.id === id)).filter(Boolean);
+      const platforms = [...new Set(checkedAccounts.map(a => a.platform ?? 'tiktok'))];
+
+      // Prefer TikTok; fallback to first platform; fallback to TikTok defaults
+      const platform = platforms.includes('tiktok') ? 'tiktok'
+        : (platforms[0] ?? 'tiktok');
+      const slots = BEST_TIMES[platform] ?? BEST_TIMES.tiktok;
+
+      chips.innerHTML = slots.map(s => {
+        const dt = toDatetimeLocal(nextOccurrence(s.day, s.hour));
+        return `<button type="button"
+          onclick="document.getElementById('schedule-time').value='${dt}'"
+          style="font-size:0.75rem;padding:0.25rem 0.65rem;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;white-space:nowrap"
+          onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent-light)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'"
+          >${s.label}</button>`;
+      }).join('');
+
+      row.style.display = 'block';
     }
 
     // ── Hashtag Sets ──────────────────────────────────────────────────────────
