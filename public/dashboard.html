@@ -775,6 +775,16 @@
         accounts = rawAccounts;
         user     = data.user ?? {};
 
+        // Invalidate post cache if a different user is logged in
+        const cachedUserId = localStorage.getItem('cp_user_id');
+        if (user.id && cachedUserId !== user.id) {
+          localStorage.removeItem('cp_posts');
+          localStorage.setItem('cp_user_id', user.id);
+          posts = [];
+        } else if (user.id && !cachedUserId) {
+          localStorage.setItem('cp_user_id', user.id);
+        }
+
         renderAccountBar();
         renderAccountCheckboxes();
         renderNavAccount();
