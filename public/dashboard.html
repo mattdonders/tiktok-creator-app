@@ -588,21 +588,21 @@
                 <div class="tt-toggle-row">
                   <span>Allow comments</span>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="tiktok-allow-comment" autocomplete="off" />
+                    <input type="checkbox" id="tiktok-allow-comment" autocomplete="off" checked />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
                 <div class="tt-toggle-row">
                   <span>Allow duet</span>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="tiktok-allow-duet" autocomplete="off" />
+                    <input type="checkbox" id="tiktok-allow-duet" autocomplete="off" checked />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
                 <div class="tt-toggle-row">
                   <span>Allow stitch</span>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="tiktok-allow-stitch" autocomplete="off" />
+                    <input type="checkbox" id="tiktok-allow-stitch" autocomplete="off" checked />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
@@ -1405,7 +1405,7 @@
       document.getElementById('tiktok-duration-hint').textContent = '';
       ['tiktok-allow-comment','tiktok-allow-duet','tiktok-allow-stitch'].forEach(id => {
         const el = document.getElementById(id);
-        el.checked  = false;
+        el.checked  = true;
         el.disabled = false;
       });
       document.getElementById('tiktok-disclosure-toggle').checked = false;
