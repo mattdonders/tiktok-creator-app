@@ -296,14 +296,18 @@
 
     async function disconnect(accountId, accountName) {
       if (!confirm(`Disconnect "${accountName}" from CreatorPost?`)) return;
-      const res = await fetch('/api/disconnect', {
+      const res  = await fetch('/api/disconnect', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ account_id: accountId }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        accounts = accounts.filter(a => a.id !== accountId);
-        renderAccounts();
+        await loadProfile();
+      } else {
+        const statusEl = document.getElementById('status-msg');
+        statusEl.className   = 'status-msg error';
+        statusEl.textContent = data.error ?? 'Disconnect failed — please try again';
       }
     }
 
