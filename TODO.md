@@ -1,5 +1,17 @@
 # CreatorPost — TODO
 
+## 📣 Marketing / Content
+
+- [ ] Generate 3 HeyGen promo videos using Avatar 4 + Dustin avatar
+  - Video 3 first ("TikTok's Secret API" — strongest hook)
+  - Video 1 second ("The Manual Upload Trap")
+  - Video 2 third ("Before vs After")
+  - Preferred portrait IDs noted in session (save grid image to docs/heygen-dustin-portraits.png)
+  - Post to TikTok + Instagram only (skip YouTube Shorts)
+  - Pin all 3 on @creatorpostapp TikTok + Instagram profiles
+- [ ] Post existing 3 TikTok videos to Instagram Reels via CreatorPost
+- [ ] Post on r/SideProject + r/Entrepreneur ("I built this") for first users
+
 ## 🔴 Immediate
 
 - [ ] Test full upload flow end-to-end with production TikTok credentials
@@ -11,11 +23,17 @@
 ## 🟠 Platform Expansion (v2.1)
 
 - [ ] Research & prioritize: YouTube, Instagram, LinkedIn, Threads (see branding.md)
-- [ ] Add YouTube Shorts publishing (YouTube Data API v3 — easiest, no approval)
-- [ ] Add Instagram Reels publishing (Meta Graph API — moderate complexity)
+- [x] Add YouTube Shorts publishing (YouTube Data API v3 — easiest, no approval)
+- [x] Add Instagram Reels publishing (Meta Graph API — moderate complexity)
 - [ ] Add Threads publishing (shares Meta OAuth with Instagram — near-free if IG done)
 - [ ] Update dashboard account selector to show platform icons per account
 - [ ] Update `connected_accounts` schema if needed for new platforms
+
+## 🏢 Teams (Future)
+
+- [ ] Design teams model: team → members (user_ids) + shared connected accounts
+- [ ] Add `tiktok_videos` table scoped by `platform_user_id` (not `user_id`) so all team members who share a TikTok account see the same historical stats regardless of who posted
+- [ ] Build team invite / member management UI
 
 ## 🟢 Product / Monetization
 
@@ -36,6 +54,8 @@
 - [ ] Submit to Product Hunt (when v2 is live and stable)
 
 ## ⚙️ Technical Debt / Improvements
+
+- [ ] Account page polish: move "Generate API Key" button to header row (inline with API KEYS label, like Connected Accounts)
 
 - [ ] Implement proper `disconnect` endpoint (currently redirects to logout)
   - Should remove specific `connected_accounts` row, not clear session
