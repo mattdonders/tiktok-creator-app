@@ -1081,6 +1081,8 @@ Guidelines:
 - TikTok/Instagram: punchy opening hook, 3-5 relevant hashtags at the end, conversational tone, max ~300 chars before hashtags
 - YouTube: slightly longer, SEO-friendly phrasing, 2-3 hashtags
 - If multiple platforms, write one caption that works across all of them
+- Always put a blank line between the caption body and the hashtags
+- Never use em-dashes (--) or en-dashes. Use a comma or period instead.
 - Return ONLY the caption text. No explanations, no alternatives, no quotes around the output.`,
       messages: [{ role: 'user', content: userContent }],
     }),
