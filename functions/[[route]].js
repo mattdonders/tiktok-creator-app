@@ -581,11 +581,15 @@ app.get('/api/instagram/debug', async (c) => {
   const accountId = c.req.query('account_id');
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
+  // Look up by platform_user_id OR uuid id, without user_id restriction (debug only)
   const account = await c.env.DB.prepare(
-    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
-  ).bind(accountId, session.user_id, 'instagram').first();
+    'SELECT * FROM connected_accounts WHERE (id = ? OR platform_user_id = ?) AND platform = ?'
+  ).bind(accountId, accountId, 'instagram').first();
 
-  if (!account) return c.json({ error: 'Account not found' }, 404);
+  if (!account) {
+    const all = await c.env.DB.prepare('SELECT id, platform, platform_user_id FROM connected_accounts WHERE user_id = ?').bind(session.user_id).all();
+    return c.json({ error: 'Account not found', session_user_id: session.user_id, all_accounts: all.results }, 404);
+  }
 
   const igUserId    = account.platform_user_id;
   const accessToken = account.access_token;
