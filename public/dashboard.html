@@ -1641,7 +1641,7 @@
         return;
       }
       list.innerHTML = hashtagSets.map(s => `
-        <button type="button" onclick="appendHashtagSet(${JSON.stringify(escHtml(s.hashtags))})"
+        <button type="button" onclick="appendHashtagSet('${escHtml(s.id)}')"
           style="width:100%;text-align:left;background:none;border:none;padding:0.5rem 0.75rem;cursor:pointer;color:var(--text);font-size:0.85rem;display:flex;flex-direction:column;gap:0.15rem"
           onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">
           <span style="font-weight:600">${escHtml(s.name)}</span>
@@ -1649,10 +1649,12 @@
         </button>`).join('');
     }
 
-    function appendHashtagSet(hashtags) {
+    function appendHashtagSet(id) {
+      const set = hashtagSets.find(s => s.id === id);
+      if (!set) return;
       const el  = document.getElementById('caption');
       const val = el.value.trimEnd();
-      el.value  = val ? `${val}\n\n${hashtags}` : hashtags;
+      el.value  = val ? `${val}\n\n${set.hashtags}` : set.hashtags;
       updateCharCount(el);
       document.getElementById('hashtag-dropdown').style.display = 'none';
     }
