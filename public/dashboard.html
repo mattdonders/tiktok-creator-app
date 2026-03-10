@@ -333,6 +333,7 @@
     }
     .post-time { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
     .post-account { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
+    .post-stats { display:flex; gap:0.75rem; font-size:0.75rem; color:var(--muted); margin-top:0.25rem; }
     .post-status {
       font-size: 0.75rem;
       padding: 0.2rem 0.5rem;
@@ -683,17 +684,20 @@
       } catch { /* fall back to local cache */ }
       renderPosts();
       updateStats();
+      loadPostStats();
     }
 
     function normalisePost(p) {
       return {
-        id:        p.id ?? p.publish_id,
-        caption:   p.caption ?? p.title ?? "(no caption)",
-        time:      p.schedule_time ?? p.created_at ?? p.time ?? new Date().toISOString(),
-        status:    (p.status ?? "processing").toLowerCase(),
-        account:   p.account_name ?? p.display_name ?? "",
-        platform:  p.platform ?? '',
-        scheduled: p.status === "scheduled",
+        id:         p.id ?? p.publish_id,
+        publish_id: p.publish_id ?? null,
+        caption:    p.caption ?? p.title ?? "(no caption)",
+        time:       p.schedule_time ?? p.created_at ?? p.time ?? new Date().toISOString(),
+        status:     (p.status ?? "processing").toLowerCase(),
+        account:    p.account_name ?? p.display_name ?? "",
+        platform:   p.platform ?? '',
+        scheduled:  p.status === "scheduled",
+        video_id:   p.video_id ?? null,
       };
     }
 
@@ -1085,6 +1089,7 @@
               ${p.account ? escHtml(p.account) : ''}
               ${p.platform ? `<span style="font-size:0.65rem;font-weight:600;color:${PLATFORM_COLOR[p.platform]??'#888'};background:${PLATFORM_BG[p.platform]??'rgba(255,255,255,0.08)'};border-radius:3px;padding:0.1rem 0.35rem">${escHtml(PLATFORM_LABEL[p.platform]??p.platform)}</span>` : ''}
             </div>` : ""}
+            ${p.status === 'published' && p.platform === 'tiktok' ? `<div id="post-stats-${escHtml(p.id)}" class="post-stats"></div>` : ''}
           </div>
           <div class="post-status ${escHtml(p.status)}">${escHtml(p.status)}</div>
         </div>`).join("");
@@ -1155,6 +1160,33 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    // ── Post Stats ────────────────────────────────────────────────────────────
+
+    function fmtNum(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000)    return (n / 1000).toFixed(1) + 'K';
+      return String(n);
+    }
+
+    async function loadPostStats() {
+      const hasTikTok = posts.some(p => p.status === 'published' && p.platform === 'tiktok');
+      if (!hasTikTok) return;
+      try {
+        const res   = await fetch('/api/posts/stats');
+        if (!res.ok) return;
+        const stats = await res.json();
+        for (const [postId, s] of Object.entries(stats)) {
+          const el = document.getElementById(`post-stats-${postId}`);
+          if (!el) continue;
+          el.innerHTML = `
+            <span>👁 ${fmtNum(s.views)}</span>
+            <span>❤️ ${fmtNum(s.likes)}</span>
+            <span>💬 ${fmtNum(s.comments)}</span>
+            <span>↗ ${fmtNum(s.shares)}</span>`;
+        }
+      } catch { /* stats are non-critical */ }
     }
 
     // ── API Keys ──────────────────────────────────────────────────────────────

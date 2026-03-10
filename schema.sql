@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS posts (
   status       TEXT    NOT NULL DEFAULT 'processing',  -- processing | scheduled | published | failed
   publish_id   TEXT,
   scheduled_at INTEGER,
-  created_at   INTEGER NOT NULL
+  created_at   INTEGER NOT NULL,
+  video_id     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS api_keys (

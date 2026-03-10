@@ -948,10 +948,12 @@ app.get('/api/publish', async (c) => {
   const data = await res.json();
 
   // Update post status in DB if complete/failed
-  const status = data.data?.status;
+  const status  = data.data?.status;
+  // Note: TikTok typo'd "publicaly" in their API response — this is intentional
+  const videoId = data.data?.publicaly_available_post_id?.[0] ?? null;
   if (status === 'PUBLISH_COMPLETE' || status === 'DOWNLOAD_COMPLETE') {
-    await c.env.DB.prepare('UPDATE posts SET status = ? WHERE publish_id = ?')
-      .bind('published', publish_id).run();
+    await c.env.DB.prepare('UPDATE posts SET status = ?, video_id = ? WHERE publish_id = ?')
+      .bind('published', videoId, publish_id).run();
   } else if (status === 'FAILED') {
     await c.env.DB.prepare('UPDATE posts SET status = ? WHERE publish_id = ?')
       .bind('failed', publish_id).run();
@@ -1122,6 +1124,56 @@ async function sendMagicLink(email, link, env) {
     }),
   });
 }
+
+// ── API — post stats ─────────────────────────────────────────────────────────
+
+app.get('/api/posts/stats', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  // Get published TikTok posts that have a resolved video_id
+  const { results } = await c.env.DB.prepare(`
+    SELECT p.id, p.video_id, a.access_token
+    FROM posts p
+    JOIN connected_accounts a ON p.account_id = a.id
+    WHERE p.user_id = ? AND p.video_id IS NOT NULL AND p.platform = 'tiktok'
+    ORDER BY p.created_at DESC
+    LIMIT 50
+  `).bind(session.user_id).all();
+
+  if (!results.length) return c.json({});
+
+  // Group by access_token — each account needs its own API call
+  const byToken = {};
+  for (const row of results) {
+    if (!byToken[row.access_token]) byToken[row.access_token] = [];
+    byToken[row.access_token].push(row);
+  }
+
+  const statsMap = {}; // keyed by post UUID
+  for (const [token, rows] of Object.entries(byToken)) {
+    const res  = await fetch('https://open.tiktokapis.com/v2/video/query/', {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+      body:    JSON.stringify({
+        filters: { video_ids: rows.map(r => r.video_id) },
+        fields:  ['id', 'view_count', 'like_count', 'comment_count', 'share_count'],
+      }),
+    });
+    const data = await res.json();
+    for (const v of data.data?.videos ?? []) {
+      const row = rows.find(r => r.video_id === v.id);
+      if (row) statsMap[row.id] = {
+        views:    v.view_count    ?? 0,
+        likes:    v.like_count    ?? 0,
+        comments: v.comment_count ?? 0,
+        shares:   v.share_count   ?? 0,
+      };
+    }
+  }
+
+  return c.json(statsMap);
+});
 
 // ── API Keys ──────────────────────────────────────────────────────────────────
 
