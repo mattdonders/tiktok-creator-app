@@ -1010,6 +1010,60 @@ app.get('/api/tiktok/creator_info', async (c) => {
   return c.json(data.data ?? {});
 });
 
+// ── API — AI caption generator ───────────────────────────────────────────────
+
+app.post('/api/ai/caption', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'AI not configured' }, 503);
+
+  const { description, platforms, existing_caption } = await c.req.json().catch(() => ({}));
+  if (!description?.trim()) return c.json({ error: 'Please describe your video first.' }, 400);
+
+  const platformList = Array.isArray(platforms) && platforms.length
+    ? platforms.join(', ')
+    : 'TikTok';
+
+  const userContent = [
+    `Video description: ${description.trim()}`,
+    existing_caption?.trim() ? `Draft caption (refine this): ${existing_caption.trim()}` : null,
+    `Target platform(s): ${platformList}`,
+  ].filter(Boolean).join('\n');
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key':         c.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type':      'application/json',
+    },
+    body: JSON.stringify({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      temperature: 0,
+      system: `You are a social media caption writer for short-form video creators.
+Write a caption based ONLY on what the user describes. Do not invent facts, claims, statistics, or details that are not explicitly provided.
+Guidelines:
+- TikTok/Instagram: punchy opening hook, 3-5 relevant hashtags at the end, conversational tone, max ~300 chars before hashtags
+- YouTube: slightly longer, SEO-friendly phrasing, 2-3 hashtags
+- If multiple platforms, write one caption that works across all of them
+- Return ONLY the caption text. No explanations, no alternatives, no quotes around the output.`,
+      messages: [{ role: 'user', content: userContent }],
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    log(c, { type: 'error', event: 'ai_caption_failed', status: res.status, error: data?.error?.message });
+    return c.json({ error: 'Caption generation failed — try again.' }, 502);
+  }
+
+  const caption = data.content?.[0]?.text?.trim() ?? '';
+  log(c, { type: 'event', event: 'ai_caption_generated', platforms: platformList });
+  return c.json({ caption });
+});
+
 // ── API — posts history ───────────────────────────────────────────────────────
 
 app.get('/api/posts', async (c) => {

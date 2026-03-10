@@ -561,7 +561,25 @@
 
           <!-- Row 2: Caption (full width) -->
           <div class="form-group">
-            <label>Caption</label>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+              <label style="margin-bottom:0">Caption</label>
+              <button type="button" class="btn btn-outline" id="ai-caption-btn"
+                style="font-size:0.75rem;padding:0.25rem 0.65rem;display:flex;align-items:center;gap:0.35rem"
+                onclick="toggleAiPanel()">✨ Generate</button>
+            </div>
+            <div id="ai-caption-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0.85rem;margin-bottom:0.6rem">
+              <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.5rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase">Describe your video</div>
+              <input id="ai-description" type="text" class="input"
+                placeholder="e.g. A 60-second history fact about the Roman Empire"
+                style="margin-bottom:0.6rem"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();generateCaption()}" />
+              <div style="display:flex;align-items:center;gap:0.5rem">
+                <button type="button" class="btn btn-primary" id="ai-generate-btn"
+                  style="font-size:0.8rem;padding:0.35rem 0.9rem"
+                  onclick="generateCaption()">Generate</button>
+                <span id="ai-caption-error" style="font-size:0.8rem;color:#f87171;display:none"></span>
+              </div>
+            </div>
             <textarea class="input" id="caption" name="caption"
               placeholder="Write a caption… #hashtags"
               maxlength="2200"
@@ -1584,6 +1602,63 @@
             <span>↗ ${fmtNum(s.shares)}</span>`;
         }
       } catch { /* stats are non-critical */ }
+    }
+
+    // ── AI Caption ────────────────────────────────────────────────────────────
+
+    function toggleAiPanel() {
+      const panel = document.getElementById('ai-caption-panel');
+      const isHidden = panel.style.display === 'none';
+      panel.style.display = isHidden ? 'block' : 'none';
+      if (isHidden) document.getElementById('ai-description').focus();
+    }
+
+    async function generateCaption() {
+      const description = document.getElementById('ai-description').value.trim();
+      const errorEl     = document.getElementById('ai-caption-error');
+      const btn         = document.getElementById('ai-generate-btn');
+
+      errorEl.style.display = 'none';
+      if (!description) {
+        errorEl.textContent    = 'Please describe your video first.';
+        errorEl.style.display  = 'inline';
+        return;
+      }
+
+      const checkedAccounts = getCheckedAccountIds()
+        .map(id => accounts.find(a => a.id === id)).filter(Boolean);
+      const platforms = [...new Set(checkedAccounts.map(a => a.platform ?? 'tiktok'))];
+
+      btn.disabled    = true;
+      btn.textContent = 'Generating...';
+
+      try {
+        const res  = await fetch('/api/ai/caption', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            description,
+            platforms,
+            existing_caption: document.getElementById('caption').value.trim() || null,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent   = data.error ?? 'Generation failed.';
+          errorEl.style.display = 'inline';
+          return;
+        }
+        const captionEl = document.getElementById('caption');
+        captionEl.value = data.caption;
+        updateCharCount(captionEl);
+        document.getElementById('ai-caption-panel').style.display = 'none';
+      } catch {
+        errorEl.textContent   = 'Network error — try again.';
+        errorEl.style.display = 'inline';
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Generate';
+      }
     }
 
   </script>
