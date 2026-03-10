@@ -307,9 +307,6 @@ app.get('/callback/instagram', async (c) => {
     return c.redirect('/dashboard?error=token_failed');
   }
 
-  // Log what permissions were actually granted in the OAuth response
-  log(c, { type: 'event', event: 'instagram_permissions_granted', permissions: tokenData.permissions ?? null, user_id: userId });
-
   // Exchange short-lived for long-lived (60 days)
   let longToken = { access_token: tokenData.access_token, expires_in: 3600 };
   try {
@@ -579,51 +576,6 @@ app.post('/api/instagram/upload', async (c) => {
 
   log(c, { type: 'event', event: 'instagram_upload_initiated', user_id: session.user_id, account_id: accountId, post_id: postId, container_id: containerId });
   return c.json({ container_id: containerId, post_id: postId, r2_key: r2Key });
-});
-
-app.get('/api/instagram/debug', async (c) => {
-  const session   = await getSession(c);
-  const accountId = c.req.query('account_id');
-  if (!session) return c.json({ error: 'not_authenticated' }, 401);
-
-  // Look up by platform_user_id OR uuid id, without user_id restriction (debug only)
-  const account = await c.env.DB.prepare(
-    'SELECT * FROM connected_accounts WHERE (id = ? OR platform_user_id = ?) AND platform = ?'
-  ).bind(accountId, accountId, 'instagram').first();
-
-  if (!account) {
-    const all = await c.env.DB.prepare('SELECT id, platform, platform_user_id FROM connected_accounts WHERE user_id = ?').bind(session.user_id).all();
-    return c.json({ error: 'Account not found', session_user_id: session.user_id, all_accounts: all.results }, 404);
-  }
-
-  const igUserId    = account.platform_user_id;
-  const accessToken = account.access_token;
-
-  // Test 1: check content publishing limit (validates token + publish permission)
-  const limitParams = new URLSearchParams({ fields: 'config,quota_usage', access_token: accessToken });
-  const limitRes    = await fetch(`${IG_GRAPH}/${igUserId}/content_publishing_limit?${limitParams}`);
-  const limitData   = await limitRes.json();
-
-  // Test 2: check R2 public URL is configured
-  const r2Url = c.env.R2_PUBLIC_URL ?? null;
-
-  // Test 3: try uploading a tiny test object to R2 and verify URL
-  let r2Test = null;
-  if (c.env.MEDIA_BUCKET && r2Url) {
-    const testKey = `ig-temp/debug-test.txt`;
-    await c.env.MEDIA_BUCKET.put(testKey, 'hello', { httpMetadata: { contentType: 'text/plain' } });
-    const testUrl = `${r2Url.replace(/\/$/, '')}/${testKey}`;
-    const testRes = await fetch(testUrl);
-    r2Test = { url: testUrl, status: testRes.status, ok: testRes.ok };
-    await c.env.MEDIA_BUCKET.delete(testKey);
-  }
-
-  return c.json({
-    ig_user_id:    igUserId,
-    publish_limit: limitData,
-    r2_public_url: r2Url,
-    r2_test:       r2Test,
-  });
 });
 
 app.get('/api/instagram/status', async (c) => {
