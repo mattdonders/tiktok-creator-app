@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Posts &amp; Analytics — CreatorPost</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <style>
+    .posts-layout { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
+
+    /* ── Aggregate stats strip ── */
+    .stats-strip { display: flex; align-items: center; }
+    .stat-item { flex: 1; text-align: center; padding: 0.4rem 1rem; border-right: 1px solid var(--border); }
+    .stat-item:last-child { border-right: none; }
+    .stat-num { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+    .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* ── Filter bar ── */
+    .filter-bar { display: flex; gap: 0.75rem; margin-bottom: 1.25rem; align-items: center; flex-wrap: wrap; }
+    .platform-pill {
+      font-size: 0.75rem; font-weight: 600; padding: 0.3rem 0.75rem; border-radius: 20px;
+      border: 1px solid var(--border); background: none; color: var(--muted); cursor: pointer;
+      transition: all 0.15s;
+    }
+    .platform-pill:hover { color: var(--text); border-color: var(--muted); }
+    .platform-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── Posts table ── */
+    .posts-table { width: 100%; border-collapse: collapse; }
+    .posts-table th {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted); font-weight: 700; padding: 0.6rem 0.75rem;
+      text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .posts-table th.right { text-align: right; }
+    .posts-table td { font-size: 0.875rem; padding: 0.7rem 0.75rem; vertical-align: middle; border-bottom: 1px solid var(--border); }
+    .posts-table tbody tr:last-child td { border-bottom: none; }
+    .posts-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+    .caption-cell { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stat-cell { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+    .stat-cell.has-value { color: var(--text); }
+
+    /* ── Status badges ── */
+    .post-status {
+      font-size: 0.72rem; padding: 0.15rem 0.45rem; border-radius: 4px;
+      font-weight: 600; text-transform: capitalize; white-space: nowrap; display: inline-block;
+    }
+    .post-status.published  { background: rgba(74,222,128,0.15);  color: #4ade80; }
+    .post-status.scheduled  { background: rgba(124,58,237,0.15);  color: var(--accent-light); }
+    .post-status.processing { background: rgba(251,191,36,0.15);  color: #fbbf24; }
+    .post-status.failed     { background: rgba(248,113,113,0.15); color: #f87171; }
+    .post-status.inbox      { background: rgba(96,165,250,0.15);  color: #60a5fa; }
+
+    /* ── States ── */
+    .empty-state { text-align: center; padding: 3rem 1rem; color: var(--muted); font-size: 0.875rem; }
+    .loading-row td { text-align: center; padding: 2rem; color: var(--muted); font-size: 0.875rem; }
+
+    @media (max-width: 768px) {
+      .col-comments, .col-shares { display: none; }
+      .caption-cell { max-width: 180px; }
+      .stat-num { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/dashboard" class="logo">
+      <img src="/logo.png" alt="CreatorPost" class="logo-img" />
+      Creator<span>Post</span>
+    </a>
+    <ul>
+      <li><a href="/dashboard">Dashboard</a></li>
+      <li><a href="/posts" style="color:var(--text);font-weight:500">Posts</a></li>
+    </ul>
+    <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem;">
+      <span style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+    </div>
+  </nav>
+
+  <div class="posts-layout">
+    <h2 style="font-size:1.4rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:1.5rem">Posts &amp; Analytics</h2>
+
+    <!-- Aggregate stats strip -->
+    <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.5rem">
+      <div class="stats-strip">
+        <div class="stat-item">
+          <div class="stat-num" id="agg-views">—</div>
+          <div class="stat-label">Total Views</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num" id="agg-total">—</div>
+          <div class="stat-label">Total Posts</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num" id="agg-avg">—</div>
+          <div class="stat-label">Avg Views</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num" id="agg-best">—</div>
+          <div class="stat-label">Best Post</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <button class="platform-pill active" data-platform="">All</button>
+      <button class="platform-pill" data-platform="tiktok">TikTok</button>
+      <button class="platform-pill" data-platform="youtube">YouTube</button>
+      <button class="platform-pill" data-platform="instagram">Instagram</button>
+      <select id="account-filter" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.3rem 0.65rem;color:var(--text);font-size:0.8rem;cursor:pointer">
+        <option value="">All Accounts</option>
+      </select>
+    </div>
+
+    <!-- Posts table -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="posts-table">
+        <thead>
+          <tr>
+            <th>Caption</th>
+            <th>Platform</th>
+            <th>Account</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th class="right">Views</th>
+            <th class="right">Likes</th>
+            <th class="col-comments right">Comments</th>
+            <th class="col-shares right">Shares</th>
+          </tr>
+        </thead>
+        <tbody id="posts-tbody">
+          <tr class="loading-row"><td colspan="9">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="load-more-sentinel" style="height:1px;margin-top:1px"></div>
+    <div id="empty-state" class="empty-state" style="display:none">No posts found.</div>
+  </div>
+
+  <script>
+    // ── Constants ─────────────────────────────────────────────────────────────
+    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
+    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)', instagram: 'rgba(225,48,108,0.15)' };
+    const PLATFORM_COLOR = { tiktok: '#ccc', youtube: '#ff6b6b', instagram: '#e1306c' };
+    const STATS_CACHE_KEY = 'cp_post_stats';
+    const STATS_CACHE_TTL = 15 * 60 * 1000;
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let cursor            = null;
+    let loading           = false;
+    let hasMore           = true;
+    let activeFilters     = { platform: null, account_id: null };
+    let allRenderedPostIds = [];
+    let postsById         = {};
+    let statsMap          = {};
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', async () => {
+      const [me, aggregate] = await Promise.all([
+        fetch('/api/me').then(r => r.json()).catch(() => ({})),
+        fetch('/api/posts/aggregate').then(r => r.json()).catch(() => ({})),
+      ]);
+
+      if (!me.user) { window.location.href = '/login'; return; }
+
+      renderNav(me);
+      renderAccountFilter(me.accounts ?? []);
+      renderAggregate(aggregate);
+
+      await loadPage();
+      await loadStats();
+      setupIntersectionObserver();
+    });
+
+    // ── Nav ───────────────────────────────────────────────────────────────────
+    function renderNav(me) {
+      const label = me.user?.display_name || me.user?.email || '';
+      document.getElementById('nav-account').innerHTML = `
+        <span style="font-size:0.85rem;color:var(--muted)">${escHtml(label)}</span>
+        <a href="/account" style="font-size:0.85rem;color:var(--muted);text-decoration:none">Settings</a>
+        <a href="/auth/logout" style="font-size:0.8rem;color:var(--muted);margin-left:0.25rem">Log out</a>`;
+    }
+
+    // ── Account filter dropdown ───────────────────────────────────────────────
+    function renderAccountFilter(accounts) {
+      const sel = document.getElementById('account-filter');
+      for (const a of accounts) {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.display_name ?? PLATFORM_LABEL[a.platform] ?? a.platform;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener('change', () => setFilter('account_id', sel.value || null));
+    }
+
+    // ── Aggregate strip ───────────────────────────────────────────────────────
+    function renderAggregate(agg) {
+      document.getElementById('agg-total').textContent = fmtNum(agg.total ?? 0);
+    }
+
+    function updateAggregateViews() {
+      const entries = Object.entries(statsMap);
+      if (!entries.length) return;
+
+      const totalViews = entries.reduce((sum, [, s]) => sum + (s.views ?? 0), 0);
+      const avgViews   = Math.round(totalViews / entries.length);
+      document.getElementById('agg-views').textContent = fmtNum(totalViews);
+      document.getElementById('agg-avg').textContent   = fmtNum(avgViews);
+
+      // Best post: max views, linked if TikTok
+      const [bestId, bestStats] = entries.reduce((a, b) => (b[1].views ?? 0) > (a[1].views ?? 0) ? b : a, ['', { views: 0 }]);
+      if (bestId && (bestStats.views ?? 0) > 0) {
+        const post = postsById[bestId];
+        const views = fmtNum(bestStats.views ?? 0);
+        const el = document.getElementById('agg-best');
+        if (post?.video_id && post?.platform === 'tiktok') {
+          el.innerHTML = `<a href="https://www.tiktok.com/@${escHtml(post.platform_user_id)}/video/${escHtml(post.video_id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" title="${escHtml(post.caption ?? '')}">${views}</a>`;
+        } else {
+          el.textContent = views;
+        }
+      }
+    }
+
+    // ── Load page of posts ────────────────────────────────────────────────────
+    async function loadPage() {
+      if (loading || !hasMore) return;
+      loading = true;
+
+      const params = new URLSearchParams({ limit: '50' });
+      if (cursor)                   params.set('cursor', cursor);
+      if (activeFilters.platform)   params.set('platform', activeFilters.platform);
+      if (activeFilters.account_id) params.set('account_id', activeFilters.account_id);
+
+      try {
+        const res   = await fetch(`/api/posts?${params}`);
+        const posts = await res.json();
+        if (!Array.isArray(posts)) { loading = false; return; }
+
+        if (posts.length < 50) hasMore = false;
+        if (posts.length > 0)  cursor = posts[posts.length - 1].created_at;
+
+        // Clear loading placeholder on first page
+        if (allRenderedPostIds.length === 0) {
+          document.getElementById('posts-tbody').innerHTML = '';
+        }
+
+        for (const p of posts) {
+          postsById[p.id] = p;
+          allRenderedPostIds.push(p.id);
+        }
+
+        appendRows(posts);
+
+        if (allRenderedPostIds.length === 0 && !hasMore) {
+          document.getElementById('empty-state').style.display = 'block';
+        }
+      } catch { /* ignore */ }
+
+      loading = false;
+    }
+
+    // ── Render table rows ─────────────────────────────────────────────────────
+    function appendRows(posts) {
+      const tbody = document.getElementById('posts-tbody');
+      const frag  = document.createDocumentFragment();
+
+      for (const p of posts) {
+        const tr = document.createElement('tr');
+        tr.dataset.postId = p.id;
+
+        const canLink     = p.video_id && p.platform === 'tiktok';
+        const captionHtml = canLink
+          ? `<a href="https://www.tiktok.com/@${escHtml(p.platform_user_id)}/video/${escHtml(p.video_id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${escHtml(p.caption ?? '')}</a>`
+          : escHtml(p.caption ?? '');
+
+        const platLabel = PLATFORM_LABEL[p.platform] ?? p.platform ?? '';
+        const platColor = PLATFORM_COLOR[p.platform] ?? '#888';
+        const platBg    = PLATFORM_BG[p.platform]    ?? 'rgba(255,255,255,0.08)';
+        const platBadge = `<span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:3px;padding:0.1rem 0.35rem">${escHtml(platLabel)}</span>`;
+
+        const statusText = { published: 'published', processing: 'processing', failed: 'failed', scheduled: 'scheduled', inbox: 'in drafts' }[p.status] ?? p.status;
+        const hasStats   = !!(p.video_id && p.platform === 'tiktok');
+        const dash       = '—';
+
+        tr.innerHTML = `
+          <td class="caption-cell">${captionHtml}</td>
+          <td>${platBadge}</td>
+          <td style="font-size:0.8rem;color:var(--muted);white-space:nowrap">${escHtml(p.display_name ?? '')}</td>
+          <td style="font-size:0.8rem;color:var(--muted);white-space:nowrap">${formatDate(p.created_at)}</td>
+          <td><span class="post-status ${escHtml(p.status)}">${escHtml(statusText)}</span></td>
+          <td class="stat-cell" id="stat-views-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>
+          <td class="stat-cell" id="stat-likes-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>
+          <td class="stat-cell col-comments" id="stat-comments-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>
+          <td class="stat-cell col-shares"   id="stat-shares-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>`;
+
+        frag.appendChild(tr);
+      }
+
+      tbody.appendChild(frag);
+      fillStatCells(); // fill any stats already in cache
+    }
+
+    // ── Load TikTok stats ─────────────────────────────────────────────────────
+    async function loadStats() {
+      const tiktokIds = allRenderedPostIds.filter(id => {
+        const p = postsById[id];
+        return p?.video_id && p?.platform === 'tiktok';
+      });
+      if (!tiktokIds.length) return;
+
+      try {
+        const cached = JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? 'null');
+        let freshStats;
+
+        if (cached && (Date.now() - cached.ts) < STATS_CACHE_TTL) {
+          freshStats = cached.data;
+        } else {
+          const ids = tiktokIds.join(',');
+          const res = await fetch(`/api/posts/stats?ids=${ids}`);
+          if (!res.ok) return;
+          freshStats = await res.json();
+          const existingData = cached?.data ?? {};
+          localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({
+            ts:   Date.now(),
+            data: { ...existingData, ...freshStats },
+          }));
+        }
+
+        Object.assign(statsMap, freshStats);
+        fillStatCells();
+        updateAggregateViews();
+      } catch { /* stats are non-critical */ }
+    }
+
+    function fillStatCells() {
+      for (const [postId, s] of Object.entries(statsMap)) {
+        const vEl = document.getElementById(`stat-views-${postId}`);
+        if (!vEl) continue;
+        vEl.textContent = fmtNum(s.views ?? 0);
+        vEl.classList.add('has-value');
+
+        const lEl = document.getElementById(`stat-likes-${postId}`);
+        if (lEl) { lEl.textContent = fmtNum(s.likes ?? 0); lEl.classList.add('has-value'); }
+
+        const cEl = document.getElementById(`stat-comments-${postId}`);
+        if (cEl) { cEl.textContent = fmtNum(s.comments ?? 0); cEl.classList.add('has-value'); }
+
+        const sEl = document.getElementById(`stat-shares-${postId}`);
+        if (sEl) { sEl.textContent = fmtNum(s.shares ?? 0); sEl.classList.add('has-value'); }
+      }
+    }
+
+    // ── Platform pill filters ─────────────────────────────────────────────────
+    document.querySelectorAll('.platform-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.platform-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        setFilter('platform', btn.dataset.platform || null);
+      });
+    });
+
+    function setFilter(key, value) {
+      activeFilters[key] = value;
+      cursor             = null;
+      hasMore            = true;
+      allRenderedPostIds = [];
+      postsById          = {};
+      statsMap           = {};
+      document.getElementById('posts-tbody').innerHTML = '<tr class="loading-row"><td colspan="9">Loading…</td></tr>';
+      document.getElementById('empty-state').style.display = 'none';
+      document.getElementById('agg-views').textContent = '—';
+      document.getElementById('agg-avg').textContent   = '—';
+      document.getElementById('agg-best').textContent  = '—';
+      loadPage().then(loadStats);
+    }
+
+    // ── Infinite scroll ───────────────────────────────────────────────────────
+    function setupIntersectionObserver() {
+      const sentinel = document.getElementById('load-more-sentinel');
+      new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && !loading && hasMore) {
+          loadPage().then(loadStats);
+        }
+      }, { rootMargin: '200px' }).observe(sentinel);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function fmtNum(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000)    return (n / 1000).toFixed(1) + 'K';
+      return String(n);
+    }
+
+    function formatDate(ts) {
+      if (ts == null) return '—';
+      try {
+        const ms = typeof ts === 'number' ? ts * 1000 : ts;
+        return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch { return '—'; }
+    }
+
+    function escHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

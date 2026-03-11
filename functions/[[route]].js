@@ -1133,16 +1133,54 @@ app.get('/api/posts', async (c) => {
   const session = await getSession(c);
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
-  const posts = await c.env.DB.prepare(`
+  const cursor     = c.req.query('cursor');
+  const platform   = c.req.query('platform');
+  const account_id = c.req.query('account_id');
+  const limit      = Math.min(parseInt(c.req.query('limit') ?? '50'), 100);
+
+  const conditions = ['p.user_id = ?'];
+  const params     = [session.user_id];
+
+  if (platform)   { conditions.push('p.platform = ?');   params.push(platform); }
+  if (account_id) { conditions.push('p.account_id = ?'); params.push(account_id); }
+  if (cursor)     { conditions.push('p.created_at < ?'); params.push(parseInt(cursor)); }
+
+  params.push(limit);
+
+  const { results } = await c.env.DB.prepare(`
     SELECT p.*, a.display_name, a.avatar_url, a.platform_user_id, a.platform
     FROM posts p
     JOIN connected_accounts a ON p.account_id = a.id
-    WHERE p.user_id = ?
+    WHERE ${conditions.join(' AND ')}
     ORDER BY p.created_at DESC
-    LIMIT 50
+    LIMIT ?
+  `).bind(...params).all();
+
+  return c.json(results);
+});
+
+app.get('/api/posts/aggregate', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+
+  const { results } = await c.env.DB.prepare(`
+    SELECT platform, status, COUNT(*) as count
+    FROM posts
+    WHERE user_id = ?
+    GROUP BY platform, status
   `).bind(session.user_id).all();
 
-  return c.json(posts.results);
+  const by_platform = {};
+  const by_status   = {};
+  let total = 0;
+
+  for (const row of results) {
+    by_platform[row.platform] = (by_platform[row.platform] ?? 0) + row.count;
+    by_status[row.status]     = (by_status[row.status]     ?? 0) + row.count;
+    total += row.count;
+  }
+
+  return c.json({ by_platform, by_status, total });
 });
 
 // DELETE /api/posts/:id
@@ -1421,14 +1459,30 @@ app.get('/api/posts/stats', async (c) => {
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
   // Get published TikTok posts that have a resolved video_id
-  const { results } = await c.env.DB.prepare(`
-    SELECT p.id, p.video_id, a.access_token
-    FROM posts p
-    JOIN connected_accounts a ON p.account_id = a.id
-    WHERE p.user_id = ? AND p.video_id IS NOT NULL AND p.platform = 'tiktok'
-    ORDER BY p.created_at DESC
-    LIMIT 50
-  `).bind(session.user_id).all();
+  const idsParam = c.req.query('ids');
+  let results;
+
+  if (idsParam) {
+    const ids = idsParam.split(',').filter(Boolean).slice(0, 100);
+    const placeholders = ids.map(() => '?').join(',');
+    ({ results } = await c.env.DB.prepare(`
+      SELECT p.id, p.video_id, a.access_token
+      FROM posts p
+      JOIN connected_accounts a ON p.account_id = a.id
+      WHERE p.user_id = ? AND p.video_id IS NOT NULL AND p.platform = 'tiktok'
+        AND p.id IN (${placeholders})
+      ORDER BY p.created_at DESC
+    `).bind(session.user_id, ...ids).all());
+  } else {
+    ({ results } = await c.env.DB.prepare(`
+      SELECT p.id, p.video_id, a.access_token
+      FROM posts p
+      JOIN connected_accounts a ON p.account_id = a.id
+      WHERE p.user_id = ? AND p.video_id IS NOT NULL AND p.platform = 'tiktok'
+      ORDER BY p.created_at DESC
+      LIMIT 50
+    `).bind(session.user_id).all());
+  }
 
   if (!results.length) return c.json({});
 
