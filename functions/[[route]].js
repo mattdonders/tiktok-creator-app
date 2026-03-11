@@ -1167,11 +1167,21 @@ app.post('/api/posts/seed', async (c) => {
   ).bind(account_id, session.user_id, 'tiktok').first();
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
+  // Fetch caption from oEmbed if not provided
+  let resolvedCaption = caption ?? '';
+  if (!resolvedCaption) {
+    try {
+      const oe = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(tiktok_url)}`);
+      const oeData = await oe.json();
+      resolvedCaption = oeData.title ?? '';
+    } catch { /* best effort */ }
+  }
+
   const postId = newId();
   await c.env.DB.prepare(`
     INSERT INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
     VALUES (?, ?, ?, 'tiktok', ?, 'published', ?, ?)
-  `).bind(postId, session.user_id, account_id, caption ?? '', video_id, now()).run();
+  `).bind(postId, session.user_id, account_id, resolvedCaption, video_id, now()).run();
 
   return c.json({ ok: true, post_id: postId, video_id });
 });
