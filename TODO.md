@@ -1,38 +1,58 @@
 # CreatorPost — TODO
 
+## 🚀 Soft-Launch Checklist (do in order)
+
+### Week 1 — Ship & Test (now)
+- [x] Token refresh cron (GitHub Actions every 6h → `/api/cron/refresh-tokens`)
+- [x] Rolling sessions (cookie + DB expiry refresh on every API call)
+- [x] Welcome email on first sign-up
+- [x] Onboarding banner for new users with no accounts connected
+- [x] Empty state connect links in "Publish To" panel
+- [x] Beta badge on landing page + nav
+- [x] Auto-redirect logged-in users from landing page → dashboard
+- [x] Login page email pre-fill from localStorage
+- [x] AI Caption / Hashtags button label fixes
+- [x] Upgrade button → "Pro plan coming soon — Join waitlist"
+- [x] API Keys button moved inline with section header
+- [ ] Reconnect own TikTok accounts (refresh display_name + avatar)
+- [ ] Run end-to-end production test: real video → TikTok + Instagram + YouTube
+
+### Week 2 — Own Platform Seeding
+- [ ] Post HeyGen Video 3 first ("TikTok's Secret API" — strongest hook) via CreatorPost → @creatorpostapp TikTok + Instagram, pin it
+- [ ] Post existing 3 TikTok videos to Instagram Reels via CreatorPost (validates flow + builds @creatorpostapp IG)
+- [ ] Write Twitter/X thread on personal account: "I got approved for TikTok's Content Posting API — here's what it took"
+
+### Week 3 — Community Distribution
+- [ ] Post on r/SideProject — builder story angle
+- [ ] Post on r/Entrepreneur — efficiency angle
+- [ ] DM 10-20 known creators with direct beta invite
+- [ ] Tweet #buildinpublic with real pipeline numbers
+
+### Week 4 — Feedback + Polish
+- [ ] Collect feedback (Tally form or direct DM)
+- [ ] Fix top 2-3 reported issues
+- [ ] If TikTok Direct Post approved → update landing page, remove inbox caveats
+- [ ] Start Product Hunt prep (screenshots, tagline, hunter outreach)
+
+---
+
 ## 📣 Marketing / Content
 
 - [ ] Generate 3 HeyGen promo videos using Avatar 4 + Dustin avatar
   - Video 3 first ("TikTok's Secret API" — strongest hook)
   - Video 1 second ("The Manual Upload Trap")
   - Video 2 third ("Before vs After")
-  - Preferred portrait IDs noted in session (save grid image to docs/heygen-dustin-portraits.png)
   - Post to TikTok + Instagram only (skip YouTube Shorts)
   - Pin all 3 on @creatorpostapp TikTok + Instagram profiles
-- [ ] Post existing 3 TikTok videos to Instagram Reels via CreatorPost
-- [ ] Post on r/SideProject + r/Entrepreneur ("I built this") for first users
-
-## 🔴 Immediate
-
-- [ ] Test full upload flow end-to-end with production TikTok credentials
-- [ ] Verify Axiom logs are appearing after redeploy
-- [ ] Reconnect TikTok account (to pull real display_name/avatar now that profile scope works)
-- [ ] Implement token refresh (TikTok tokens expire; need cron to refresh)
-- [ ] Wait for TikTok revision review (added scopes + second redirect URI)
 
 ## 🟠 Platform Expansion (v2.1)
 
-- [ ] Research & prioritize: YouTube, Instagram, LinkedIn, Threads (see branding.md)
-- [x] Add YouTube Shorts publishing (YouTube Data API v3 — easiest, no approval)
-- [x] Add Instagram Reels publishing (Meta Graph API — moderate complexity)
 - [ ] Add Threads publishing (shares Meta OAuth with Instagram — near-free if IG done)
 - [ ] Update dashboard account selector to show platform icons per account
-- [ ] Update `connected_accounts` schema if needed for new platforms
 
 ## 🏢 Teams (Future)
 
 - [ ] Design teams model: team → members (user_ids) + shared connected accounts
-- [ ] Add `tiktok_videos` table scoped by `platform_user_id` (not `user_id`) so all team members who share a TikTok account see the same historical stats regardless of who posted
 - [ ] Build team invite / member management UI
 
 ## 🟢 Product / Monetization
@@ -41,28 +61,19 @@
 - [ ] Set up Stripe (or Lemon Squeezy — simpler for solo)
 - [ ] Build billing page / upgrade flow
 - [ ] Add usage limits to free tier (e.g. 5 posts/month, 1 account)
-- [ ] Add waitlist → invite flow (convert Kit.com waitlist signups)
+- [ ] Add waitlist → invite flow (convert signups)
 
 ## 🔵 Branding & Marketing
 
-- [ ] Claim @creatorpost on Instagram (if not already)
-- [ ] Claim @creatorpost on X/Twitter (even if not actively posting)
-- [ ] Claim @creatorpost on YouTube
-- [ ] Post first piece of content to @creatorpost TikTok (account already created)
 - [ ] Set up a short newsletter (Beehiiv free tier) for updates + creator tips
 - [ ] Write landing page blog post: "How to auto-post TikTok videos with an API"
-- [ ] Submit to Product Hunt (when v2 is live and stable)
+- [ ] Submit to Product Hunt (after Direct Post approved + 5+ real users)
 
 ## ⚙️ Technical Debt / Improvements
 
-- [ ] Account page polish: move "Generate API Key" button to header row (inline with API KEYS label, like Connected Accounts)
-
-- [ ] Implement proper `disconnect` endpoint (currently redirects to logout)
-  - Should remove specific `connected_accounts` row, not clear session
-- [ ] Add cron job for token refresh (Cloudflare Cron Triggers)
-- [ ] Add proper error logging (Cloudflare Analytics or Sentry free tier)
 - [ ] Rate limit `/auth/send` endpoint (prevent magic link spam)
 - [ ] Add `_redirects` file for clean URL routing if needed
+- [ ] Add Threads publishing
 
 ---
 
@@ -86,3 +97,11 @@
 - [x] Set up social accounts @creatorpostapp (TikTok, Instagram, Twitter, YouTube)
 - [x] Write branding content (docs/branding.md)
 - [x] Write HeyGen promo video scripts (docs/heygen-video-prompt.md)
+- [x] Add YouTube Shorts publishing
+- [x] Add Instagram Reels publishing
+- [x] Token refresh cron (GitHub Actions)
+- [x] Rolling sessions
+- [x] Welcome email on signup
+- [x] Onboarding UX (banner, empty states, button labels)
+- [x] Beta badge + landing page auto-redirect
+- [x] API Keys button + Upgrade button polish
