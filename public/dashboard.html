@@ -1693,7 +1693,9 @@
         <div class="post-item" data-post-id="${escHtml(p.id)}">
           <div class="post-thumb">🎬</div>
           <div class="post-meta">
-            <div class="post-caption">${escHtml(p.caption)}</div>
+            <div class="post-caption">${p.video_id && p.platform === 'tiktok'
+              ? `<a href="https://www.tiktok.com/@${escHtml(p.account)}/video/${escHtml(p.video_id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${escHtml(p.caption)}</a>`
+              : escHtml(p.caption)}</div>
             <div class="post-time">${formatTime(p.time)}</div>
             ${p.account || p.platform ? `<div class="post-account" style="display:flex;align-items:center;gap:0.4rem">
               ${p.account ? escHtml(p.account) : ''}
