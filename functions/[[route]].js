@@ -1584,6 +1584,7 @@ async function refreshExpiredTikTokTokens(env) {
        AND token_expires_at IS NOT NULL AND token_expires_at < ?`
   ).bind(threshold).all();
 
+  let refreshed = 0;
   for (const account of results) {
     try {
       const data = await refreshTikTokToken(account.refresh_token, env);
@@ -1595,18 +1596,31 @@ async function refreshExpiredTikTokTokens(env) {
         data.expires_in ? now() + data.expires_in : null,
         account.id
       ).run();
+      refreshed++;
     } catch (err) {
       console.error(`TikTok token refresh failed for ${account.id}:`, err.message);
     }
   }
+  return refreshed;
 }
+
+// ── Cron endpoint (called by external cron, e.g. cron-job.org every 6h) ──────
+// POST /api/cron/refresh-tokens
+// Header: Authorization: Bearer <CRON_SECRET>
+
+app.post('/api/cron/refresh-tokens', async (c) => {
+  const secret = c.env.CRON_SECRET;
+  if (!secret) return c.json({ error: 'not_configured' }, 503);
+  const auth = c.req.header('Authorization') ?? '';
+  if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
+
+  const count = await refreshExpiredTikTokTokens(c.env);
+  log(c, { type: 'event', event: 'cron_token_refresh', refreshed: count });
+  return c.json({ ok: true, refreshed: count });
+});
 
 // ── Export for Cloudflare Pages ───────────────────────────────────────────────
 
 export const onRequest = (context) => {
   return app.fetch(context.request, context.env, context);
-};
-
-export const scheduled = async (event, env, ctx) => {
-  await refreshExpiredTikTokTokens(env);
 };
