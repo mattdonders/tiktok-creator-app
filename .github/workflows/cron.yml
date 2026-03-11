@@ -9,8 +9,8 @@ jobs:
   refresh-tokens:
     runs-on: ubuntu-latest
     steps:
-      - name: Refresh expiring TikTok tokens
+      - name: Refresh expiring tokens
         run: |
+          set -o pipefail
           curl -sf -X POST https://creatorpost.app/api/cron/refresh-tokens \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            | cat
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

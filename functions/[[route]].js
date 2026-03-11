@@ -1610,7 +1610,35 @@ app.post('/api/v1/publish', async (c) => {
   return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: sourceInfo.source });
 });
 
-// ── Cron: refresh expiring TikTok tokens ─────────────────────────────────────
+// ── Cron: refresh expiring tokens ────────────────────────────────────────────
+
+async function refreshExpiredInstagramTokens(env) {
+  // Instagram long-lived tokens expire in 60 days — refresh when < 10 days remain
+  const threshold = now() + (10 * 86400);
+  const { results } = await env.DB.prepare(
+    `SELECT id, access_token FROM connected_accounts
+     WHERE platform = 'instagram' AND access_token IS NOT NULL
+       AND token_expires_at IS NOT NULL AND token_expires_at < ?`
+  ).bind(threshold).all();
+
+  let refreshed = 0;
+  for (const account of results) {
+    try {
+      const res = await fetch(
+        `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${account.access_token}`
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      await env.DB.prepare(
+        'UPDATE connected_accounts SET access_token = ?, token_expires_at = ? WHERE id = ?'
+      ).bind(data.access_token, data.expires_in ? now() + data.expires_in : null, account.id).run();
+      refreshed++;
+    } catch (err) {
+      console.error(`Instagram token refresh failed for ${account.id}:`, err.message);
+    }
+  }
+  return refreshed;
+}
 
 async function refreshExpiredTikTokTokens(env) {
   const threshold = now() + 86400; // accounts expiring within 24 hours
@@ -1650,9 +1678,12 @@ app.post('/api/cron/refresh-tokens', async (c) => {
   const auth = c.req.header('Authorization') ?? '';
   if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
 
-  const count = await refreshExpiredTikTokTokens(c.env);
-  log(c, { type: 'event', event: 'cron_token_refresh', refreshed: count });
-  return c.json({ ok: true, refreshed: count });
+  const [tiktok, instagram] = await Promise.all([
+    refreshExpiredTikTokTokens(c.env),
+    refreshExpiredInstagramTokens(c.env),
+  ]);
+  log(c, { type: 'event', event: 'cron_token_refresh', tiktok, instagram });
+  return c.json({ ok: true, tiktok, instagram });
 });
 
 // ── Export for Cloudflare Pages ───────────────────────────────────────────────
