@@ -1414,12 +1414,11 @@ app.get('/api/posts/stats', async (c) => {
 
   const statsMap = {}; // keyed by post UUID
   for (const [token, rows] of Object.entries(byToken)) {
-    const res  = await fetch('https://open.tiktokapis.com/v2/video/query/', {
+    const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
       method:  'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
       body:    JSON.stringify({
         filters: { video_ids: rows.map(r => r.video_id) },
-        fields:  ['id', 'view_count', 'like_count', 'comment_count', 'share_count'],
       }),
     });
     const data = await res.json();
