@@ -266,6 +266,13 @@
       <div class="card-section-title" style="color:#f87171">Danger zone</div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
         <div>
+          <div style="font-size:0.9rem;font-weight:600">Clear stats cache</div>
+          <div style="font-size:0.8rem;color:var(--muted);margin-top:0.2rem">Force-refresh TikTok post stats on next dashboard load.</div>
+        </div>
+        <button class="btn btn-outline" onclick="clearStatsCache()">Clear stats cache</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-top:1rem">
+        <div>
           <div style="font-size:0.9rem;font-weight:600">Log out</div>
           <div style="font-size:0.8rem;color:var(--muted);margin-top:0.2rem">Sign out of your CreatorPost session.</div>
         </div>
@@ -275,6 +282,11 @@
   </div>
 
   <script>
+    function clearStatsCache() {
+      localStorage.removeItem('cp_post_stats');
+      alert('Stats cache cleared — reload the dashboard to fetch fresh stats.');
+    }
+
     function escHtml(s) {
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
