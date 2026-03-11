@@ -795,6 +795,7 @@
     // ─────────────────────────────────────────────────────────────────────────
     let accounts = [];   // from /api/me
     let user     = {};   // from /api/me
+    let isDev    = false;
     let posts    = JSON.parse(localStorage.getItem("cp_posts") ?? "[]");
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -848,7 +849,8 @@
         renderNavAccount();
 
         // Show URL mode toggle for @mattdonders.com users
-        if (user.email?.endsWith('@mattdonders.com')) {
+        isDev = !!user.email?.endsWith('@mattdonders.com');
+        if (isDev) {
           document.getElementById('url-mode-toggle').style.display = 'flex';
           // Show seed post card and populate its account list
           document.getElementById('seed-post-card').style.display = '';
@@ -1620,6 +1622,28 @@
       }, 10000);
     }
 
+    async function refreshCaption(post_id, video_id, btn) {
+      btn.textContent = '⏳'; btn.disabled = true;
+      try {
+        const res  = await fetch(`/api/posts/${encodeURIComponent(post_id)}/fetch-caption`, { method: 'POST' });
+        const data = await res.json();
+        if (data.caption) {
+          const el = document.querySelector(`[data-post-id="${post_id}"] .post-caption`);
+          if (el) el.textContent = data.caption;
+          posts = posts.map(p => p.id === post_id ? { ...p, caption: data.caption } : p);
+          localStorage.setItem('cp_posts', JSON.stringify(posts.slice(0, 50)));
+          renderPosts();
+          showToast('Caption updated', 'success');
+        } else {
+          showToast('Caption not found — try again in a moment', 'error');
+          btn.textContent = '↺'; btn.disabled = false;
+        }
+      } catch (e) {
+        showToast('Failed to fetch caption', 'error');
+        btn.textContent = '↺'; btn.disabled = false;
+      }
+    }
+
     async function recheckStatus(publish_id, account_id, btn) {
       if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
       try {
@@ -1666,7 +1690,7 @@
       }
 
       container.innerHTML = posts.slice(0, 10).map(p => `
-        <div class="post-item">
+        <div class="post-item" data-post-id="${escHtml(p.id)}">
           <div class="post-thumb">🎬</div>
           <div class="post-meta">
             <div class="post-caption">${escHtml(p.caption)}</div>
@@ -1680,6 +1704,7 @@
           <div style="display:flex;align-items:center;gap:0.5rem">
             <div class="post-status ${escHtml(p.status)}">${{published:'published',processing:'processing',failed:'failed',scheduled:'scheduled',inbox:'in drafts'}[p.status] ?? p.status}</div>
             ${p.status === 'processing' && p.publish_id && p.account_id && p.platform === 'tiktok' ? `<button onclick="recheckStatus('${escHtml(p.publish_id)}','${escHtml(p.account_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Recheck status">↻</button>` : ''}
+            ${isDev && p.status === 'published' && p.platform === 'tiktok' && p.video_id ? `<button onclick="refreshCaption('${escHtml(p.id)}','${escHtml(p.video_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Re-fetch caption">↺</button>` : ''}
             <button onclick="deletePost('${escHtml(p.id)}')" style="background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px;line-height:1" title="Remove">✕</button>
           </div>
         </div>`).join("");

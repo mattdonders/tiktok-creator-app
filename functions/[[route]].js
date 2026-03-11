@@ -1158,6 +1158,30 @@ app.delete('/api/posts/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/posts/:id/fetch-caption — dev only, re-fetches oEmbed caption for a published TikTok post
+app.post('/api/posts/:id/fetch-caption', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(session.user_id).first();
+  if (!user?.email?.endsWith('@mattdonders.com')) return c.json({ error: 'forbidden' }, 403);
+
+  const postId = c.req.param('id');
+  const post = await c.env.DB.prepare('SELECT video_id FROM posts WHERE id = ? AND user_id = ?')
+    .bind(postId, session.user_id).first();
+  if (!post?.video_id) return c.json({ error: 'Post not found or no video_id' }, 404);
+
+  try {
+    const oe     = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(`https://www.tiktok.com/video/${post.video_id}`)}`);
+    const data   = await oe.json();
+    const caption = data.title ?? '';
+    if (!caption) return c.json({ caption: '' });
+    await c.env.DB.prepare('UPDATE posts SET caption = ? WHERE id = ?').bind(caption, postId).run();
+    return c.json({ caption });
+  } catch (err) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 // POST /api/posts/seed — dev only (@mattdonders.com), seeds a published post from a TikTok URL
 app.post('/api/posts/seed', async (c) => {
   const session = await getSession(c);
