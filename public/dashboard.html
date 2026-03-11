@@ -1785,13 +1785,23 @@
       return String(n);
     }
 
+    const STATS_CACHE_KEY = 'cp_post_stats';
+    const STATS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
     async function loadPostStats() {
       const hasTikTok = posts.some(p => p.status === 'published' && p.platform === 'tiktok');
       if (!hasTikTok) return;
       try {
-        const res   = await fetch('/api/posts/stats');
-        if (!res.ok) return;
-        const stats = await res.json();
+        let stats;
+        const cached = JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? 'null');
+        if (cached && (Date.now() - cached.ts) < STATS_CACHE_TTL) {
+          stats = cached.data;
+        } else {
+          const res = await fetch('/api/posts/stats');
+          if (!res.ok) return;
+          stats = await res.json();
+          localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: stats }));
+        }
         for (const [postId, s] of Object.entries(stats)) {
           const el = document.getElementById(`post-stats-${postId}`);
           if (!el) continue;
