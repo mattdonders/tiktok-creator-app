@@ -1,0 +1,16 @@
+name: Refresh TikTok tokens
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:          # allow manual trigger from GitHub Actions UI
+
+jobs:
+  refresh-tokens:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh expiring TikTok tokens
+        run: |
+          curl -sf -X POST https://creatorpost.app/api/cron/refresh-tokens \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            | cat
