@@ -515,6 +515,17 @@
       </div>
     </div>
 
+    <!-- ── First-time onboarding banner ── -->
+    <div id="onboarding-banner" style="display:none;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.25);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem">
+      <div style="font-size:1rem;font-weight:700;margin-bottom:0.4rem">Connect an account to get started</div>
+      <p style="font-size:0.875rem;color:var(--muted);margin:0 0 1rem;line-height:1.5">Connect your TikTok, YouTube, or Instagram account to start publishing videos from one dashboard.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
+        <a href="/auth/tiktok" class="btn btn-primary" style="font-size:0.85rem;padding:0.45rem 1rem">Connect TikTok</a>
+        <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.85rem;padding:0.45rem 1rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">Connect YouTube</a>
+        <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.85rem;padding:0.45rem 1rem;color:#e1306c;border-color:rgba(225,48,108,0.4)">Connect Instagram</a>
+      </div>
+    </div>
+
     <!-- ── Main dashboard stack ── -->
     <div class="dash-stack">
 
@@ -581,10 +592,10 @@
               <div style="display:flex;gap:0.4rem;position:relative">
                 <button type="button" class="btn btn-outline" id="ai-caption-btn"
                   style="font-size:0.75rem;padding:0.25rem 0.65rem;display:flex;align-items:center;gap:0.35rem"
-                  onclick="toggleAiPanel()">✨ Generate</button>
+                  onclick="toggleAiPanel()">✨ AI Caption</button>
                 <button type="button" class="btn btn-outline" id="hashtag-sets-btn"
                   style="font-size:0.75rem;padding:0.25rem 0.65rem"
-                  onclick="toggleHashtagDropdown()"># Sets</button>
+                  onclick="toggleHashtagDropdown()"># Hashtags</button>
                 <div id="hashtag-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.3);z-index:100;padding:0.4rem 0">
                   <div id="hashtag-dropdown-list"></div>
                   <div style="border-top:1px solid var(--border);margin-top:0.4rem;padding:0.4rem 0.75rem 0">
@@ -862,10 +873,13 @@
     // ─────────────────────────────────────────────────────────────────────────
     function renderAccountBar() {
       const label = document.getElementById("accounts-bar-label");
+      const banner = document.getElementById('onboarding-banner');
       if (!accounts.length) {
         label.innerHTML = '<span>No accounts connected</span>';
+        if (banner) banner.style.display = 'block';
         return;
       }
+      if (banner) banner.style.display = 'none';
       const byPlatform = accounts.reduce((m, a) => {
         const p = a.platform ?? 'tiktok';
         m[p] = (m[p] ?? 0) + 1;
@@ -892,7 +906,12 @@
     function renderAccountCheckboxes() {
       const container = document.getElementById("account-checkboxes");
       if (!accounts.length) {
-        container.innerHTML = `<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No accounts connected</div>`;
+        container.innerHTML = `<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0;line-height:1.7">
+      No accounts connected —
+      <a href="/auth/tiktok" style="color:var(--accent-light);text-decoration:none">TikTok</a> ·
+      <a href="/auth/youtube" style="color:#ff6b6b;text-decoration:none">YouTube</a> ·
+      <a href="/auth/instagram" style="color:#e1306c;text-decoration:none">Instagram</a>
+    </div>`;
         updateSubmitBtn();
         return;
       }
@@ -903,11 +922,16 @@
         const platLabel = escHtml(PLATFORM_LABEL[platform] ?? platform);
         const platColor = PLATFORM_COLOR[platform] ?? '#888';
         const platBg    = PLATFORM_BG[platform]    ?? 'rgba(255,255,255,0.08)';
+        const expiresSoon = acc.token_expires_at && acc.token_expires_at < (Math.floor(Date.now()/1000) + 48*3600);
+        const expiryBadge = expiresSoon
+          ? `<span title="Token expiring soon — reconnect this account" style="font-size:0.68rem;background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:4px;padding:0.15rem 0.4rem;flex-shrink:0;cursor:default">⚠ Reconnect</span>`
+          : '';
         return `
           <label class="account-check-row" id="row-${id}">
             <input type="checkbox" class="acct-cb" value="${id}" onchange="onCheckboxChange(this)" />
             <span class="account-check-name">${name}</span>
             <span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:4px;padding:0.2rem 0.5rem;flex-shrink:0">${platLabel}</span>
+            ${expiryBadge}
           </label>`;
       }).join('');
       updateSubmitBtn();

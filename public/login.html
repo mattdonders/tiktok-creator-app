@@ -135,6 +135,12 @@
   </div>
 
   <script>
+    // Pre-fill email from localStorage if available
+    const savedEmail = localStorage.getItem('cp_email');
+    if (savedEmail) {
+      document.getElementById('email').value = savedEmail;
+    }
+
     // Show error from query param (e.g. expired link)
     const params = new URLSearchParams(location.search);
     if (params.get('error') === 'expired') {
@@ -158,6 +164,7 @@
         const data = await res.json();
 
         if (res.ok) {
+          localStorage.setItem('cp_email', email);
           document.getElementById('login-form').style.display = 'none';
           showMsg(`Magic link sent to ${email} — check your inbox!`, 'success');
         } else {

@@ -87,9 +87,21 @@ async function getSession(c) {
   const sid = getCookie(c, 'cp_session');
   if (!sid) return null;
   const row = await c.env.DB.prepare(
-    'SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?'
+    'SELECT user_id, expires_at FROM sessions WHERE id = ? AND expires_at > ?'
   ).bind(sid, now()).first();
-  if (row) c.set('log_user_id', row.user_id);
+  if (row) {
+    c.set('log_user_id', row.user_id);
+    // Rolling session: reset cookie max-age on every request
+    sessionCookie(c, sid);
+    // Extend DB expiry if less than 15 days remain
+    const refreshThreshold = now() + (SESSION_TTL / 2);
+    if (row.expires_at < refreshThreshold) {
+      c.executionCtx.waitUntil(
+        c.env.DB.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
+          .bind(now() + SESSION_TTL, sid).run()
+      );
+    }
+  }
   return row ?? null;
 }
 
@@ -156,6 +168,7 @@ app.get('/auth/verify', async (c) => {
       .bind(id, link.email, now()).run();
     user = { id };
     log(c, { type: 'event', event: 'user_created', email: link.email });
+    c.executionCtx.waitUntil(sendWelcomeEmail(link.email, c.env));
   }
 
   // Create session
@@ -798,7 +811,7 @@ app.get('/api/me', async (c) => {
     .bind(session.user_id).first();
 
   const accounts = await c.env.DB.prepare(
-    'SELECT id, platform, platform_user_id, display_name, avatar_url FROM connected_accounts WHERE user_id = ?'
+    'SELECT id, platform, platform_user_id, display_name, avatar_url, token_expires_at FROM connected_accounts WHERE user_id = ?'
   ).bind(session.user_id).all();
 
   return c.json({ user, accounts: accounts.results });
@@ -1205,6 +1218,22 @@ async function exchangeTikTokCode(code, redirectUri, env) {
   return res.json();
 }
 
+async function refreshTikTokToken(refreshToken, env) {
+  const body = new URLSearchParams({
+    client_key:    env.TIKTOK_CLIENT_ID,
+    client_secret: env.TIKTOK_CLIENT_SECRET,
+    grant_type:    'refresh_token',
+    refresh_token: refreshToken,
+  });
+  const res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  if (!res.ok) throw new Error(`TikTok refresh error: ${await res.text()}`);
+  return res.json();
+}
+
 async function fetchTikTokProfile(accessToken) {
   const res  = await fetch(
     'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name',
@@ -1329,6 +1358,33 @@ async function sendMagicLink(email, link, env) {
       `,
     }),
   });
+}
+
+async function sendWelcomeEmail(email, env) {
+  if (!env.RESEND_API_KEY) return;
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization:  `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from:    'CreatorPost <noreply@creatorpost.app>',
+      to:      email,
+      subject: 'Welcome to CreatorPost',
+      html:    `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:2rem">
+          <h2 style="color:#7c3aed">Welcome to CreatorPost 🎉</h2>
+          <p>You're in! CreatorPost lets you publish videos to TikTok, YouTube, and Instagram from one dashboard.</p>
+          <p>Get started by connecting your accounts:</p>
+          <a href="https://creatorpost.app/account" style="display:inline-block;background:#7c3aed;color:#fff;padding:0.75rem 1.5rem;border-radius:8px;text-decoration:none;font-weight:600;margin:1rem 0">
+            Connect your accounts
+          </a>
+          <p style="color:#888;font-size:0.875rem">Questions? Reply to this email or reach out at matt@mattdonders.com</p>
+        </div>
+      `,
+    }),
+  }).catch(() => {}); // best-effort
 }
 
 // ── API — post stats ─────────────────────────────────────────────────────────
@@ -1518,8 +1574,39 @@ app.post('/api/v1/publish', async (c) => {
   return c.json({ publish_id, post_id: postId, inbox: usedInbox });
 });
 
+// ── Cron: refresh expiring TikTok tokens ─────────────────────────────────────
+
+async function refreshExpiredTikTokTokens(env) {
+  const threshold = now() + 86400; // accounts expiring within 24 hours
+  const { results } = await env.DB.prepare(
+    `SELECT id, refresh_token FROM connected_accounts
+     WHERE platform = 'tiktok' AND refresh_token IS NOT NULL
+       AND token_expires_at IS NOT NULL AND token_expires_at < ?`
+  ).bind(threshold).all();
+
+  for (const account of results) {
+    try {
+      const data = await refreshTikTokToken(account.refresh_token, env);
+      await env.DB.prepare(
+        'UPDATE connected_accounts SET access_token = ?, refresh_token = ?, token_expires_at = ? WHERE id = ?'
+      ).bind(
+        data.access_token,
+        data.refresh_token ?? account.refresh_token,
+        data.expires_in ? now() + data.expires_in : null,
+        account.id
+      ).run();
+    } catch (err) {
+      console.error(`TikTok token refresh failed for ${account.id}:`, err.message);
+    }
+  }
+}
+
 // ── Export for Cloudflare Pages ───────────────────────────────────────────────
 
 export const onRequest = (context) => {
   return app.fetch(context.request, context.env, context);
+};
+
+export const scheduled = async (event, env, ctx) => {
+  await refreshExpiredTikTokTokens(env);
 };

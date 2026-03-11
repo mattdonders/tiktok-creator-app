@@ -195,7 +195,7 @@
             Upgrade to Pro for unlimited posts, multiple accounts, and priority support.
           </p>
         </div>
-        <button class="btn btn-outline" disabled style="opacity:0.4;cursor:not-allowed">Upgrade — coming soon</button>
+        <a href="https://creatorpost.app/#signup" class="btn btn-outline" style="font-size:0.9rem">Pro plan coming soon — <strong>Join waitlist</strong></a>
       </div>
     </div>
 
@@ -246,7 +246,10 @@
 
     <!-- API Keys -->
     <div class="profile-card">
-      <div class="card-section-title">API Keys</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+        <div class="card-section-title" style="margin-bottom:0">API Keys</div>
+        <button class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem" onclick="generateApiKey()">+ Generate Key</button>
+      </div>
       <p style="font-size:0.85rem;color:var(--muted);margin:0 0 1rem">Post programmatically from scripts and pipelines using a Bearer token.</p>
       <div id="api-keys-list" style="margin-bottom:1rem"></div>
       <div id="new-key-reveal" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem">
@@ -256,7 +259,6 @@
           <button class="btn btn-outline" style="white-space:nowrap;padding:0.3rem 0.7rem;font-size:0.8rem" onclick="copyNewKey()">Copy</button>
         </div>
       </div>
-      <button class="btn btn-outline" onclick="generateApiKey()">+ Generate API Key</button>
     </div>
 
     <!-- Danger zone -->

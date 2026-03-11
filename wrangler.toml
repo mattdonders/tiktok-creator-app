@@ -16,3 +16,6 @@ bucket_name = "creatorpost-media"
 #   TIKTOK_CLIENT_SECRET
 #   RESEND_API_KEY
 #   R2_PUBLIC_URL  (public URL of the creatorpost-media R2 bucket)
+
+[triggers]
+crons = ["0 */6 * * *"]
