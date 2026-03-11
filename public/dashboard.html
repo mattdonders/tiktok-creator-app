@@ -527,11 +527,25 @@
           <!-- Row 1: Video + Accounts (2 col) -->
           <div class="upload-form-inner" style="margin-bottom:1rem">
             <div class="form-group" style="margin-bottom:0">
-              <label>Video File</label>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+                <label style="margin-bottom:0">Video File</label>
+                <div id="url-mode-toggle" style="display:none;gap:0.5rem;font-size:0.78rem">
+                  <button type="button" id="btn-file-mode" onclick="setVideoMode('file')"
+                    style="background:var(--accent);color:#fff;border:none;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.78rem">File</button>
+                  <button type="button" id="btn-url-mode" onclick="setVideoMode('url')"
+                    style="background:none;color:var(--muted);border:1px solid var(--border);padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.78rem">URL</button>
+                </div>
+              </div>
               <!-- Hidden file input — always in DOM, triggered by drop zone click or Change button -->
               <input type="file" id="video-input" name="video" accept="video/*"
                      style="position:absolute;opacity:0;width:0;height:0;pointer-events:none"
                      onchange="onFileSelect(this)" />
+              <!-- URL input — shown for @mattdonders.com users when URL mode active -->
+              <div id="video-url-wrap" style="display:none">
+                <input type="url" id="video-url-input" placeholder="https://..." autocomplete="off"
+                  style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;color:var(--text);font-size:0.9rem" />
+                <p style="color:var(--muted);font-size:0.72rem;margin:0.35rem 0 0">Must be a publicly accessible .mp4 URL</p>
+              </div>
               <!-- Drop zone — shown before a file is selected -->
               <div class="drop-zone" id="drop-zone" onclick="document.getElementById('video-input').click()">
                 <div class="drop-zone-icon">🎬</div>
@@ -807,6 +821,11 @@
         renderAccountBar();
         renderAccountCheckboxes();
         renderNavAccount();
+
+        // Show URL mode toggle for @mattdonders.com users
+        if (user.email?.endsWith('@mattdonders.com')) {
+          document.getElementById('url-mode-toggle').style.display = 'flex';
+        }
 
       } catch {
         // Network error — stay on dashboard, show empty state
@@ -1162,12 +1181,15 @@
       e.preventDefault();
 
       const videoFile  = document.getElementById("video-input").files[0];
+      const videoUrl   = document.getElementById("video-url-input")?.value?.trim() || null;
+      const urlMode    = document.getElementById('video-url-wrap')?.style.display !== 'none';
       const caption    = document.getElementById("caption").value;
       const scheduled  = document.getElementById("schedule-toggle").checked;
       const schedTime  = document.getElementById("schedule-time").value;
       const checkedIds = getCheckedAccountIds();
 
-      if (!videoFile)         { showStatus("Please select a video file.", "error"); return; }
+      if (urlMode && !videoUrl)  { showStatus("Please enter a video URL.", "error"); return; }
+      if (!urlMode && !videoFile) { showStatus("Please select a video file.", "error"); return; }
       if (!checkedIds.length) { showStatus("Select at least one account.", "error"); return; }
       if (scheduled && !validateScheduleTime()) return;
 
@@ -1188,7 +1210,7 @@
           } else if (platform === 'instagram') {
             return submitInstagram({ acc, videoFile, caption, singleUpload });
           } else {
-            return submitTikTok({ acc, videoFile, caption, scheduled, schedTime });
+            return submitTikTok({ acc, videoFile: urlMode ? null : videoFile, videoUrl: urlMode ? videoUrl : null, caption, scheduled, schedTime });
           }
         })
       );
@@ -1223,7 +1245,7 @@
     // ─────────────────────────────────────────────────────────────────────────
     // TikTok upload
     // ─────────────────────────────────────────────────────────────────────────
-    async function submitTikTok({ acc, videoFile, caption, scheduled, schedTime }) {
+    async function submitTikTok({ acc, videoFile, videoUrl, caption, scheduled, schedTime }) {
       // Validate TikTok-specific required fields
       const tiktokPrivacy = document.getElementById('tiktok-privacy').value;
       if (!tiktokPrivacy) throw new Error('Select a privacy level in TikTok Settings before posting.');
@@ -1247,7 +1269,8 @@
       }
 
       const form = new FormData();
-      form.append("video",           videoFile);
+      if (videoFile) form.append("video",     videoFile);
+      if (videoUrl)  form.append("video_url", videoUrl);
       form.append("caption",         caption);
       form.append("account_id",      acc.id);
       form.append("privacy_level",   tiktokPrivacy);
@@ -1423,6 +1446,39 @@
       localStorage.setItem("cp_posts", JSON.stringify(posts.slice(0, 50)));
     }
 
+    function setVideoMode(mode) {
+      const urlWrap  = document.getElementById('video-url-wrap');
+      const dropZone = document.getElementById('drop-zone');
+      const previewWrap = document.getElementById('video-preview-wrap');
+      const btnFile  = document.getElementById('btn-file-mode');
+      const btnUrl   = document.getElementById('btn-url-mode');
+      if (mode === 'url') {
+        urlWrap.style.display   = 'block';
+        dropZone.style.display  = 'none';
+        previewWrap.classList.remove('visible');
+        btnUrl.style.background  = 'var(--accent)'; btnUrl.style.color  = '#fff'; btnUrl.style.border = 'none';
+        btnFile.style.background = 'none';           btnFile.style.color = 'var(--muted)'; btnFile.style.border = '1px solid var(--border)';
+      } else {
+        urlWrap.style.display   = 'none';
+        dropZone.style.display  = '';
+        document.getElementById('video-url-input').value = '';
+        btnFile.style.background = 'var(--accent)'; btnFile.style.color  = '#fff'; btnFile.style.border = 'none';
+        btnUrl.style.background  = 'none';           btnUrl.style.color  = 'var(--muted)'; btnUrl.style.border = '1px solid var(--border)';
+      }
+    }
+
+    async function deletePost(id) {
+      if (!confirm('Remove this post from your history?')) return;
+      const res = await fetch(`/api/posts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (res.ok) {
+        posts = posts.filter(p => p.id !== id);
+        localStorage.setItem('cp_posts', JSON.stringify(posts));
+        renderPosts(); updateStats();
+      } else {
+        alert('Failed to delete post.');
+      }
+    }
+
     function resetForm() {
       document.getElementById("upload-form").reset();
       document.getElementById("file-name").textContent  = "";
@@ -1463,6 +1519,8 @@
       if (preview._objectUrl) { URL.revokeObjectURL(preview._objectUrl); preview._objectUrl = null; }
       preview.src = '';
       document.getElementById('video-input').value = '';
+      const urlInput = document.getElementById('video-url-input');
+      if (urlInput) urlInput.value = '';
 
       // Clear creator info cache so next selection re-fetches
       Object.keys(tikTokCreatorInfoCache).forEach(k => delete tikTokCreatorInfoCache[k]);
@@ -1560,6 +1618,7 @@
           <div style="display:flex;align-items:center;gap:0.5rem">
             <div class="post-status ${escHtml(p.status)}">${{published:'published',processing:'processing',failed:'failed',scheduled:'scheduled',inbox:'in drafts'}[p.status] ?? p.status}</div>
             ${p.status === 'processing' && p.publish_id && p.account_id && p.platform === 'tiktok' ? `<button onclick="recheckStatus('${escHtml(p.publish_id)}','${escHtml(p.account_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Recheck status">↻</button>` : ''}
+            ${['failed','inbox'].includes(p.status) ? `<button onclick="deletePost('${escHtml(p.id)}')" style="background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px;line-height:1" title="Remove">✕</button>` : ''}
           </div>
         </div>`).join("");
 

@@ -837,6 +837,7 @@ app.post('/api/publish', async (c) => {
   catch { return c.json({ error: 'Invalid form data' }, 400); }
 
   const videoFile      = formData.get('video');
+  const videoUrl       = formData.get('video_url') ?? null;
   const caption        = (formData.get('caption') ?? '').slice(0, 2200);
   const accountId      = formData.get('account_id');
   const scheduleTime   = formData.get('schedule_time') ?? null;
@@ -847,8 +848,15 @@ app.post('/api/publish', async (c) => {
   const brandContent   = formData.get('brand_content_toggle') === 'true';
   const brandOrganic   = formData.get('brand_organic_toggle') === 'true';
 
-  if (!videoFile || typeof videoFile === 'string') {
-    return c.json({ error: 'No video file provided' }, 400);
+  const hasFile = videoFile && typeof videoFile !== 'string';
+  const hasUrl  = typeof videoUrl === 'string' && videoUrl.startsWith('http');
+
+  if (!hasFile && !hasUrl) return c.json({ error: 'No video file or URL provided' }, 400);
+
+  // URL-based publish is restricted to @mattdonders.com accounts
+  if (hasUrl && !hasFile) {
+    const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(session.user_id).first();
+    if (!user?.email?.endsWith('@mattdonders.com')) return c.json({ error: 'URL publishing is not available' }, 403);
   }
 
   const account = await c.env.DB.prepare(
@@ -860,13 +868,15 @@ app.post('/api/publish', async (c) => {
     return c.json({ error: 'Account not found' }, 404);
   }
 
-  const videoBytes = await videoFile.arrayBuffer();
-  const videoSize  = videoBytes.byteLength;
-  if (videoSize > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 50MB)' }, 413);
-
-  const sourceInfo = {
-    source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1,
-  };
+  let videoBytes, videoSize, sourceInfo;
+  if (hasUrl) {
+    sourceInfo = { source: 'PULL_FROM_URL', video_url: videoUrl };
+  } else {
+    videoBytes = await videoFile.arrayBuffer();
+    videoSize  = videoBytes.byteLength;
+    if (videoSize > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 50MB)' }, 413);
+    sourceInfo = { source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1 };
+  }
   const postInfo = {
     title: caption, privacy_level: privacyLevel,
     disable_duet: disableDuet, disable_comment: disableComment, disable_stitch: disableStitch,
@@ -909,19 +919,21 @@ app.post('/api/publish', async (c) => {
 
   const { publish_id, upload_url } = initData.data;
 
-  const uploadRes = await fetch(upload_url, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'video/mp4',
-      'Content-Range': `bytes 0-${videoSize - 1}/${videoSize}`,
-      'Content-Length': String(videoSize),
-    },
-    body: videoBytes,
-  });
+  if (!hasUrl && upload_url) {
+    const uploadRes = await fetch(upload_url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Range': `bytes 0-${videoSize - 1}/${videoSize}`,
+        'Content-Length': String(videoSize),
+      },
+      body: videoBytes,
+    });
 
-  if (!uploadRes.ok) {
-    log(c, { type: 'error', event: 'publish_failed', reason: 'upload_put_failed', upload_status: uploadRes.status, user_id: session.user_id, account_id: accountId });
-    return c.json({ error: 'Video upload failed' }, 500);
+    if (!uploadRes.ok) {
+      log(c, { type: 'error', event: 'publish_failed', reason: 'upload_put_failed', upload_status: uploadRes.status, user_id: session.user_id, account_id: accountId });
+      return c.json({ error: 'Video upload failed' }, 500);
+    }
   }
 
   // Save post to DB
@@ -1115,6 +1127,19 @@ app.get('/api/posts', async (c) => {
   `).bind(session.user_id).all();
 
   return c.json(posts.results);
+});
+
+// DELETE /api/posts/:id
+app.delete('/api/posts/:id', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const id = c.req.param('id');
+  const result = await c.env.DB.prepare(
+    'DELETE FROM posts WHERE id = ? AND user_id = ?'
+  ).bind(id, session.user_id).run();
+  if (!result.meta.changes) return c.json({ error: 'Not found' }, 404);
+  log(c, { type: 'event', event: 'post_deleted', post_id: id, user_id: session.user_id });
+  return c.json({ ok: true });
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
