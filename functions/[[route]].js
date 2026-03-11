@@ -1525,7 +1525,7 @@ app.get('/api/v1/stats', async (c) => {
 
   const { results } = await c.env.DB.prepare(`
     SELECT p.id, p.video_id, p.caption, p.status, p.created_at,
-           a.display_name AS account, a.access_token
+           a.id AS account_id, a.display_name AS account, a.access_token
     FROM posts p
     JOIN connected_accounts a ON p.account_id = a.id
     WHERE p.user_id = ? AND p.video_id IS NOT NULL AND p.platform = 'tiktok'
@@ -1559,6 +1559,7 @@ app.get('/api/v1/stats', async (c) => {
   const posts = results.map(({ access_token, ...r }) => ({
     post_id:    r.id,
     video_id:   r.video_id,
+    account_id: r.account_id,
     account:    r.account,
     caption:    r.caption,
     status:     r.status,
