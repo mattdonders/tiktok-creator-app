@@ -1519,34 +1519,51 @@ app.post('/api/v1/publish', async (c) => {
 
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
-  // Resolve video URL — upload file to R2 if needed
-  let finalVideoUrl = videoUrl;
-  if (videoFile && typeof videoFile !== 'string') {
-    const videoBytes = await videoFile.arrayBuffer();
-    const r2Key = `api-uploads/${newId()}/${videoFile.name || 'video.mp4'}`;
-    await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
-      httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
-      customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
-    });
-    finalVideoUrl = `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
+  const hasFile = videoFile && typeof videoFile !== 'string';
+  let videoBytes = null;
+  let videoSize  = 0;
+  if (hasFile) {
+    videoBytes = await videoFile.arrayBuffer();
+    videoSize  = videoBytes.byteLength;
   }
 
-  // TikTok: PULL_FROM_URL (no chunked upload needed)
-  const sourceInfo = { source: 'PULL_FROM_URL', video_url: finalVideoUrl };
-  const postInfo   = {
+  const postInfo = {
     title: caption, privacy_level: 'PUBLIC_TO_EVERYONE',
     disable_duet: false, disable_comment: false, disable_stitch: false,
     video_cover_timestamp_ms: 1000,
   };
 
-  let initRes = await fetch(TIKTOK_INIT_URL, {
+  // Try FILE_UPLOAD first (TikTok processes faster than PULL_FROM_URL).
+  // Falls back to PULL_FROM_URL via R2 if TikTok rejects the FILE_UPLOAD init.
+  let sourceInfo = hasFile
+    ? { source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1 }
+    : { source: 'PULL_FROM_URL', video_url: videoUrl };
+
+  let initRes  = await fetch(TIKTOK_INIT_URL, {
     method:  'POST',
     headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
     body:    JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
   });
-  let initData  = await initRes.json();
-  let usedInbox = false;
+  let initData = await initRes.json();
 
+  // FILE_UPLOAD init failed — fall back to PULL_FROM_URL via R2
+  if (hasFile && sourceInfo.source === 'FILE_UPLOAD' && (!initRes.ok || initData.error?.code !== 'ok')) {
+    log(c, { type: 'event', event: 'api_publish_file_upload_fallback', tiktok_error: initData.error?.code, user_id: session.user_id });
+    const r2Key  = `api-uploads/${newId()}/${videoFile.name || 'video.mp4'}`;
+    await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
+      httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
+      customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
+    });
+    sourceInfo = { source: 'PULL_FROM_URL', video_url: `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}` };
+    initRes    = await fetch(TIKTOK_INIT_URL, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+      body:    JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
+    });
+    initData   = await initRes.json();
+  }
+
+  let usedInbox = false;
   if (!initRes.ok || initData.error?.code !== 'ok') {
     initRes = await fetch(TIKTOK_INBOX_INIT_URL, {
       method:  'POST',
@@ -1563,17 +1580,34 @@ app.post('/api/v1/publish', async (c) => {
     return c.json({ error: initData.error?.message ?? 'TikTok init failed', tiktok_raw: initData }, 500);
   }
 
-  const { publish_id } = initData.data;
-  const postId = newId();
+  const { publish_id, upload_url } = initData.data;
 
+  // PUT video bytes directly to TikTok for FILE_UPLOAD
+  if (sourceInfo.source === 'FILE_UPLOAD' && upload_url) {
+    const uploadRes = await fetch(upload_url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type':   videoFile.type || 'video/mp4',
+        'Content-Range':  `bytes 0-${videoSize - 1}/${videoSize}`,
+        'Content-Length': String(videoSize),
+      },
+      body: videoBytes,
+    });
+    if (!uploadRes.ok) {
+      log(c, { type: 'error', event: 'api_publish_failed', reason: 'upload_put_failed', upload_status: uploadRes.status, user_id: session.user_id });
+      return c.json({ error: 'Video upload to TikTok failed' }, 500);
+    }
+  }
+
+  const postId = newId();
   await c.env.DB.prepare(`
     INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
     VALUES (?, ?, ?, ?, ?, 'processing', ?, ?)
   `).bind(postId, session.user_id, account.id, platform, caption, publish_id, now()).run();
 
-  log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox });
+  log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox, source: sourceInfo.source });
 
-  return c.json({ publish_id, post_id: postId, inbox: usedInbox });
+  return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: sourceInfo.source });
 });
 
 // ── Cron: refresh expiring TikTok tokens ─────────────────────────────────────
