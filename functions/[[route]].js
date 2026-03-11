@@ -1519,6 +1519,56 @@ app.get('/api/v1/accounts', async (c) => {
   return c.json(results);
 });
 
+app.get('/api/v1/stats', async (c) => {
+  const session = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const { results } = await c.env.DB.prepare(`
+    SELECT p.id, p.video_id, p.caption, p.status, p.created_at,
+           a.display_name AS account, a.access_token
+    FROM posts p
+    JOIN connected_accounts a ON p.account_id = a.id
+    WHERE p.user_id = ? AND p.video_id IS NOT NULL AND p.platform = 'tiktok'
+    ORDER BY p.created_at DESC
+    LIMIT 100
+  `).bind(session.user_id).all();
+
+  if (!results.length) return c.json([]);
+
+  // Group by access_token for batched TikTok API calls
+  const byToken = {};
+  for (const row of results) {
+    if (!byToken[row.access_token]) byToken[row.access_token] = [];
+    byToken[row.access_token].push(row);
+  }
+
+  // Fetch live stats from TikTok
+  const statsMap = {}; // keyed by video_id
+  for (const [token, rows] of Object.entries(byToken)) {
+    const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+      body:    JSON.stringify({ filters: { video_ids: rows.map(r => r.video_id) } }),
+    });
+    const data = await res.json();
+    for (const v of data.data?.videos ?? []) {
+      statsMap[v.id] = { views: v.view_count ?? 0, likes: v.like_count ?? 0, comments: v.comment_count ?? 0, shares: v.share_count ?? 0 };
+    }
+  }
+
+  const posts = results.map(({ access_token, ...r }) => ({
+    post_id:    r.id,
+    video_id:   r.video_id,
+    account:    r.account,
+    caption:    r.caption,
+    status:     r.status,
+    created_at: r.created_at,
+    stats:      statsMap[r.video_id] ?? null,
+  }));
+
+  return c.json(posts);
+});
+
 app.post('/api/v1/publish', async (c) => {
   const session = await getApiKeySession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
