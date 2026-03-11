@@ -1152,7 +1152,13 @@ app.post('/api/posts/seed', async (c) => {
   const { tiktok_url, account_id, caption } = await c.req.json().catch(() => ({}));
   if (!tiktok_url || !account_id) return c.json({ error: 'tiktok_url and account_id required' }, 400);
 
-  const match = tiktok_url.match(/video\/(\d+)/);
+  let resolvedUrl = tiktok_url;
+  if (!tiktok_url.includes('/video/')) {
+    // Short URL — follow redirect to get full URL
+    const r = await fetch(tiktok_url, { method: 'HEAD', redirect: 'follow' });
+    resolvedUrl = r.url;
+  }
+  const match = resolvedUrl.match(/video\/(\d+)/);
   if (!match) return c.json({ error: 'Could not extract video ID from URL' }, 400);
   const video_id = match[1];
 
