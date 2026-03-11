@@ -134,5 +134,14 @@
     <span>&copy; 2026 CreatorPost. All rights reserved.</span>
   </footer>
 
+  <script>
+    // Redirect logged-in users straight to the dashboard
+    (async () => {
+      try {
+        const res = await fetch('/api/me');
+        if (res.ok) window.location.replace('/dashboard');
+      } catch {}
+    })();
+  </script>
 </body>
 </html>
