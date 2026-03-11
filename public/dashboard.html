@@ -1500,6 +1500,20 @@
       }, 5000);
     }
 
+    async function recheckStatus(publish_id, account_id) {
+      try {
+        const url  = `/api/publish?publish_id=${encodeURIComponent(publish_id)}&account_id=${encodeURIComponent(account_id)}`;
+        const res  = await fetch(url);
+        const data = await res.json();
+        const s    = (data.status ?? "").toUpperCase();
+        console.log(`[recheckStatus] publish_id=${publish_id} status=${s}`, data);
+        if (s === "PUBLISH_COMPLETE" || s === "DOWNLOAD_COMPLETE") updatePostStatus(publish_id, "published");
+        else if (s === "FAILED")              updatePostStatus(publish_id, "failed");
+        else if (s === "SEND_TO_USER_INBOX")  updatePostStatus(publish_id, "inbox");
+        else alert(`TikTok status: ${s || JSON.stringify(data)}`);
+      } catch (e) { alert("Status check failed: " + e.message); }
+    }
+
     function updatePostStatus(id, status) {
       const post = posts.find(p => p.id === id);
       if (post) {
@@ -1535,7 +1549,10 @@
             </div>` : ""}
             ${p.status === 'published' && p.platform === 'tiktok' ? `<div id="post-stats-${escHtml(p.id)}" class="post-stats"></div>` : ''}
           </div>
-          <div class="post-status ${escHtml(p.status)}">${{published:'published',processing:'processing',failed:'failed',scheduled:'scheduled',inbox:'in drafts'}[p.status] ?? p.status}</div>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <div class="post-status ${escHtml(p.status)}">${{published:'published',processing:'processing',failed:'failed',scheduled:'scheduled',inbox:'in drafts'}[p.status] ?? p.status}</div>
+            ${p.status === 'processing' && p.publish_id && p.account_id && p.platform === 'tiktok' ? `<button onclick="recheckStatus('${escHtml(p.publish_id)}','${escHtml(p.account_id)}')" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Recheck status">↻</button>` : ''}
+          </div>
         </div>`).join("");
 
       updateStats();
