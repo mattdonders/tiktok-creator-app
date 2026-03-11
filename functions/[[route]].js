@@ -1406,8 +1406,7 @@ app.get('/api/posts/stats', async (c) => {
     LIMIT 50
   `).bind(session.user_id).all();
 
-  const isDebug = c.req.query('debug') === '1';
-  if (!results.length) return c.json(isDebug ? { debug: 'no_posts_with_video_id' } : {});
+  if (!results.length) return c.json({});
 
   // Group by access_token — each account needs its own API call
   const byToken = {};
@@ -1417,7 +1416,6 @@ app.get('/api/posts/stats', async (c) => {
   }
 
   const statsMap = {}; // keyed by post UUID
-  const debugInfo = [];
   for (const [token, rows] of Object.entries(byToken)) {
     const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
       method:  'POST',
@@ -1427,7 +1425,6 @@ app.get('/api/posts/stats', async (c) => {
       }),
     });
     const data = await res.json();
-    if (isDebug) debugInfo.push({ video_ids: rows.map(r => r.video_id), tiktok_response: data });
     for (const v of data.data?.videos ?? []) {
       const row = rows.find(r => r.video_id === v.id);
       if (row) statsMap[row.id] = {
@@ -1439,7 +1436,6 @@ app.get('/api/posts/stats', async (c) => {
     }
   }
 
-  if (isDebug) return c.json({ stats: statsMap, debug: debugInfo });
   return c.json(statsMap);
 });
 
