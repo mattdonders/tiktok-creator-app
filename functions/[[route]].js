@@ -1187,7 +1187,7 @@ app.post('/api/posts/seed', async (c) => {
   let resolvedCaption = caption ?? '';
   if (!resolvedCaption) {
     try {
-      const oe = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(tiktok_url)}`);
+      const oe = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(resolvedUrl)}`);
       const oeData = await oe.json();
       resolvedCaption = oeData.title ?? '';
     } catch { /* best effort */ }
