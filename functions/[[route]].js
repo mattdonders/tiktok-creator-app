@@ -1439,16 +1439,20 @@ app.get('/api/posts/stats', async (c) => {
     byToken[row.access_token].push(row);
   }
 
+  const debug = c.req.query('debug') === '1';
   const statsMap = {}; // keyed by post UUID
+  const debugInfo = [];
   for (const [token, rows] of Object.entries(byToken)) {
+    const videoIds = rows.map(r => r.video_id);
     const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
       method:  'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
       body:    JSON.stringify({
-        filters: { video_ids: rows.map(r => r.video_id) },
+        filters: { video_ids: videoIds },
       }),
     });
     const data = await res.json();
+    if (debug) debugInfo.push({ video_ids_sent: videoIds, tiktok_response: data });
     for (const v of data.data?.videos ?? []) {
       const row = rows.find(r => r.video_id === v.id);
       if (row) statsMap[row.id] = {
@@ -1460,6 +1464,7 @@ app.get('/api/posts/stats', async (c) => {
     }
   }
 
+  if (debug) return c.json({ statsMap, debug: debugInfo });
   return c.json(statsMap);
 });
 
