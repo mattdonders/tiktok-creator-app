@@ -922,9 +922,9 @@
         const platLabel = escHtml(PLATFORM_LABEL[platform] ?? platform);
         const platColor = PLATFORM_COLOR[platform] ?? '#888';
         const platBg    = PLATFORM_BG[platform]    ?? 'rgba(255,255,255,0.08)';
-        const expiresSoon = acc.token_expires_at && acc.token_expires_at < (Math.floor(Date.now()/1000) + 48*3600);
+        const expiresSoon = acc.token_expires_at && acc.token_expires_at < Math.floor(Date.now()/1000);
         const expiryBadge = expiresSoon
-          ? `<span title="Token expiring soon — reconnect this account" style="font-size:0.68rem;background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:4px;padding:0.15rem 0.4rem;flex-shrink:0;cursor:default">⚠ Reconnect</span>`
+          ? `<span title="Token expired — reconnect this account" style="font-size:0.68rem;background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:4px;padding:0.15rem 0.4rem;flex-shrink:0;cursor:default">⚠ Reconnect</span>`
           : '';
         return `
           <label class="account-check-row" id="row-${id}">
