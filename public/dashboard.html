@@ -1616,8 +1616,8 @@
           }
         } catch (e) { console.warn('[pollStatus] error', e); }
 
-        if (attempts >= 24) clearInterval(interval); // ~2 min max
-      }, 5000);
+        if (attempts >= 30) clearInterval(interval); // ~5 min max
+      }, 10000);
     }
 
     async function recheckStatus(publish_id, account_id, btn) {
