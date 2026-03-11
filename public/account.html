@@ -285,6 +285,7 @@
 
     let user     = {};
     let accounts = [];
+    let isDev    = false;
 
     async function loadProfile() {
       const res  = await fetch('/api/me');
@@ -293,6 +294,7 @@
 
       user     = data.user     ?? {};
       accounts = data.accounts ?? [];
+      isDev    = !!user.email?.endsWith('@mattdonders.com');
 
       document.getElementById('field-email').textContent    = user.email ?? '—';
       document.getElementById('field-display-name').value   = user.display_name ?? '';
@@ -337,9 +339,36 @@
               ${handle ? `<div class="acct-handle">${handle}</div>` : ''}
             </div>
             <span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:4px;padding:0.2rem 0.5rem;flex-shrink:0">${platLabel}</span>
+            ${isDev && platform === 'tiktok' ? `<button class="disconnect-btn" id="sync-btn-${id}" onclick="syncPosts('${id}')">Sync Posts</button>` : ''}
             <button class="disconnect-btn" onclick="disconnect('${id}', '${name}')">Disconnect</button>
           </div>`;
       }).join('');
+    }
+
+    async function syncPosts(accountId) {
+      const btn = document.getElementById(`sync-btn-${accountId}`);
+      if (btn) { btn.textContent = 'Syncing…'; btn.disabled = true; }
+      try {
+        const res  = await fetch('/api/tiktok/sync-posts', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ account_id: accountId }),
+        });
+        const data = await res.json();
+        const statusEl = document.getElementById('status-msg');
+        if (res.ok) {
+          const followers = data.follower_count != null ? ` · ${data.follower_count.toLocaleString()} followers` : '';
+          statusEl.className   = 'status-msg success';
+          statusEl.textContent = `Synced: ${data.imported} imported, ${data.skipped} already existed${followers}`;
+        } else {
+          statusEl.className   = 'status-msg error';
+          statusEl.textContent = data.error ?? 'Sync failed';
+        }
+      } catch (e) {
+        document.getElementById('status-msg').textContent = 'Sync failed — check console';
+      } finally {
+        if (btn) { btn.textContent = 'Sync Posts'; btn.disabled = false; }
+      }
     }
 
     async function disconnect(accountId, accountName) {

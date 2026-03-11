@@ -691,7 +691,7 @@ app.get('/auth/tiktok', async (c) => {
   const params = new URLSearchParams({
     client_key:    clientId,
     response_type: 'code',
-    scope:         'user.info.basic,video.upload,video.publish,video.list',
+    scope:         'user.info.basic,user.info.profile,user.info.stats,video.upload,video.publish,video.list',
     redirect_uri:  redirectUri,
     state,
   });
@@ -1683,6 +1683,75 @@ app.post('/api/v1/publish', async (c) => {
   log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox, source: sourceInfo.source });
 
   return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: sourceInfo.source });
+});
+
+// ── API — TikTok sync (dev only) ──────────────────────────────────────────────
+
+// POST /api/tiktok/sync-posts — dev only (@mattdonders.com)
+// Imports all published TikTok videos for an account into the posts table
+app.post('/api/tiktok/sync-posts', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(session.user_id).first();
+  if (!user?.email?.endsWith('@mattdonders.com')) return c.json({ error: 'forbidden' }, 403);
+
+  const { account_id } = await c.req.json().catch(() => ({}));
+  if (!account_id) return c.json({ error: 'account_id required' }, 400);
+
+  const account = await c.env.DB.prepare(
+    'SELECT id, access_token FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(account_id, session.user_id, 'tiktok').first();
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  // Fetch follower count (requires user.info.stats scope — graceful fallback)
+  let followerCount = null;
+  try {
+    const uRes  = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=follower_count,display_name', {
+      method:  'GET',
+      headers: { Authorization: `Bearer ${account.access_token}` },
+    });
+    const uData = await uRes.json();
+    followerCount = uData.data?.user?.follower_count ?? null;
+  } catch { /* scope not granted yet — skip */ }
+
+  // Paginate through video list
+  let cursor = 0, hasMore = true, imported = 0, skipped = 0;
+  while (hasMore) {
+    const res  = await fetch(
+      'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url',
+      {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+        body:    JSON.stringify({ max_count: 20, cursor }),
+      }
+    );
+    const data = await res.json();
+    if (data.error?.code !== 'ok') break;
+
+    const videos = data.data?.videos ?? [];
+    hasMore      = data.data?.has_more ?? false;
+    cursor       = data.data?.cursor   ?? 0;
+
+    for (const v of videos) {
+      const caption  = v.video_description || v.title || '';
+      const videoId  = String(v.id ?? '');
+      const createAt = v.create_time ?? now();
+
+      // INSERT OR IGNORE — never overwrite existing posts
+      const result = await c.env.DB.prepare(`
+        INSERT OR IGNORE INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
+        VALUES (?, ?, ?, 'tiktok', ?, 'published', ?, ?)
+      `).bind(newId(), session.user_id, account_id, caption, videoId, createAt).run();
+
+      if (result.meta.changes > 0) imported++;
+      else skipped++;
+    }
+
+    if (!hasMore || videos.length === 0) break;
+  }
+
+  log(c, { type: 'event', event: 'tiktok_sync', user_id: session.user_id, account_id, imported, skipped });
+  return c.json({ ok: true, imported, skipped, follower_count: followerCount });
 });
 
 // ── Cron: refresh expiring tokens ────────────────────────────────────────────
