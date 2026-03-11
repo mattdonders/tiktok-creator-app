@@ -1088,7 +1088,7 @@
         publish_id: p.publish_id ?? null,
         account_id: p.account_id ?? null,
         caption:    p.caption ?? p.title ?? "(no caption)",
-        time:       p.schedule_time ?? p.created_at ?? p.time ?? new Date().toISOString(),
+        time:       p.schedule_time ?? (p.created_at != null ? (typeof p.created_at === 'number' ? p.created_at * 1000 : p.created_at) : null) ?? p.time ?? new Date().toISOString(),
         status:     (p.status ?? "processing").toLowerCase(),
         account:    p.account_name ?? p.display_name ?? "",
         platform:   p.platform ?? '',
