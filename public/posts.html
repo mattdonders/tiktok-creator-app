@@ -372,9 +372,19 @@
       statsMap           = {};
       document.getElementById('posts-tbody').innerHTML = '<tr class="loading-row"><td colspan="9">Loading…</td></tr>';
       document.getElementById('empty-state').style.display = 'none';
+      document.getElementById('agg-total').textContent = '—';
       document.getElementById('agg-views').textContent = '—';
       document.getElementById('agg-avg').textContent   = '—';
       document.getElementById('agg-best').textContent  = '—';
+
+      const aggParams = new URLSearchParams();
+      if (activeFilters.platform)   aggParams.set('platform', activeFilters.platform);
+      if (activeFilters.account_id) aggParams.set('account_id', activeFilters.account_id);
+      fetch(`/api/posts/aggregate?${aggParams}`)
+        .then(r => r.json())
+        .then(renderAggregate)
+        .catch(() => {});
+
       loadPage().then(loadStats);
     }
 

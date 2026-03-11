@@ -1163,12 +1163,20 @@ app.get('/api/posts/aggregate', async (c) => {
   const session = await getSession(c);
   if (!session) return c.json({ error: 'not_authenticated' }, 401);
 
+  const platform   = c.req.query('platform');
+  const account_id = c.req.query('account_id');
+
+  const conditions = ['user_id = ?'];
+  const params     = [session.user_id];
+  if (platform)   { conditions.push('platform = ?');   params.push(platform); }
+  if (account_id) { conditions.push('account_id = ?'); params.push(account_id); }
+
   const { results } = await c.env.DB.prepare(`
     SELECT platform, status, COUNT(*) as count
     FROM posts
-    WHERE user_id = ?
+    WHERE ${conditions.join(' AND ')}
     GROUP BY platform, status
-  `).bind(session.user_id).all();
+  `).bind(...params).all();
 
   const by_platform = {};
   const by_status   = {};
