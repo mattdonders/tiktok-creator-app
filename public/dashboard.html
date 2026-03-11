@@ -1503,21 +1503,22 @@
     async function recheckStatus(publish_id, account_id, btn) {
       if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
       try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 10000);
         const url  = `/api/publish?publish_id=${encodeURIComponent(publish_id)}&account_id=${encodeURIComponent(account_id)}`;
-        const res  = await fetch(url);
+        const res  = await fetch(url, { signal: controller.signal });
+        clearTimeout(t);
         const data = await res.json();
         const s    = (data.status ?? "").toUpperCase();
         console.log(`[recheckStatus] publish_id=${publish_id} status=${s}`, data);
         if (s === "PUBLISH_COMPLETE" || s === "DOWNLOAD_COMPLETE") updatePostStatus(publish_id, "published");
         else if (s === "FAILED")              updatePostStatus(publish_id, "failed");
         else if (s === "SEND_TO_USER_INBOX")  updatePostStatus(publish_id, "inbox");
-        else {
-          if (btn) { btn.textContent = '↻'; btn.disabled = false; }
-          alert(`TikTok status: ${s || JSON.stringify(data)}`);
-        }
+        else console.warn(`[recheckStatus] unhandled status: ${s}`, data);
       } catch (e) {
-        if (btn) { btn.textContent = '↻'; btn.disabled = false; }
-        alert("Status check failed: " + e.message);
+        console.error('[recheckStatus]', e);
+      } finally {
+        if (btn && btn.isConnected) { btn.textContent = '↻'; btn.disabled = false; }
       }
     }
 
