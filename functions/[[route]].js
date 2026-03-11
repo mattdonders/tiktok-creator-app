@@ -1142,6 +1142,34 @@ app.delete('/api/posts/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/posts/seed — dev only (@mattdonders.com), seeds a published post from a TikTok URL
+app.post('/api/posts/seed', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(session.user_id).first();
+  if (!user?.email?.endsWith('@mattdonders.com')) return c.json({ error: 'forbidden' }, 403);
+
+  const { tiktok_url, account_id, caption } = await c.req.json().catch(() => ({}));
+  if (!tiktok_url || !account_id) return c.json({ error: 'tiktok_url and account_id required' }, 400);
+
+  const match = tiktok_url.match(/video\/(\d+)/);
+  if (!match) return c.json({ error: 'Could not extract video ID from URL' }, 400);
+  const video_id = match[1];
+
+  const account = await c.env.DB.prepare(
+    'SELECT id FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(account_id, session.user_id, 'tiktok').first();
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  const postId = newId();
+  await c.env.DB.prepare(`
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
+    VALUES (?, ?, ?, 'tiktok', ?, 'published', ?, ?)
+  `).bind(postId, session.user_id, account_id, caption ?? '', video_id, now()).run();
+
+  return c.json({ ok: true, post_id: postId, video_id });
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function exchangeTikTokCode(code, redirectUri, env) {

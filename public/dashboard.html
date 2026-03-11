@@ -759,6 +759,20 @@
         </div>
       </div>
 
+      <!-- ── Dev: seed post ── -->
+      <div class="card" id="seed-post-card" style="display:none;border:1px dashed var(--border)">
+        <div class="card-title" style="color:var(--muted)"><span class="icon">🧪</span> Seed Post (dev)</div>
+        <div style="display:flex;flex-direction:column;gap:0.6rem">
+          <input id="seed-url" type="url" placeholder="https://www.tiktok.com/@username/video/..." autocomplete="off"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;color:var(--text);font-size:0.875rem;width:100%;box-sizing:border-box" />
+          <select id="seed-account"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;color:var(--text);font-size:0.875rem">
+            <option value="">— select TikTok account —</option>
+          </select>
+          <button onclick="seedPost()" class="btn btn-primary" style="align-self:flex-start;padding:0.5rem 1.25rem">Seed</button>
+        </div>
+      </div>
+
     </div><!-- /dash-stack -->
   </div><!-- /dash-layout -->
 
@@ -825,6 +839,15 @@
         // Show URL mode toggle for @mattdonders.com users
         if (user.email?.endsWith('@mattdonders.com')) {
           document.getElementById('url-mode-toggle').style.display = 'flex';
+          // Show seed post card and populate its account list
+          document.getElementById('seed-post-card').style.display = '';
+          const seedSel = document.getElementById('seed-account');
+          rawAccounts.filter(a => a.platform === 'tiktok').forEach(a => {
+            const opt = document.createElement('option');
+            opt.value = a.id;
+            opt.textContent = a.display_name ?? a.platform_user_id;
+            seedSel.appendChild(opt);
+          });
         }
 
       } catch {
@@ -1465,6 +1488,21 @@
         btnFile.style.background = 'var(--accent)'; btnFile.style.color  = '#fff'; btnFile.style.border = 'none';
         btnUrl.style.background  = 'none';           btnUrl.style.color  = 'var(--muted)'; btnUrl.style.border = '1px solid var(--border)';
       }
+    }
+
+    async function seedPost() {
+      const url        = document.getElementById('seed-url').value.trim();
+      const account_id = document.getElementById('seed-account').value;
+      if (!url || !account_id) { alert('Enter a TikTok URL and select an account.'); return; }
+      const res  = await fetch('/api/posts/seed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tiktok_url: url, account_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert('Seed failed: ' + (data.error ?? res.status)); return; }
+      document.getElementById('seed-url').value = '';
+      await loadPosts();
     }
 
     async function deletePost(id) {
