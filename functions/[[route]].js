@@ -1444,23 +1444,25 @@ app.get('/api/posts/stats', async (c) => {
   const debugInfo = [];
   for (const [token, rows] of Object.entries(byToken)) {
     const videoIds = rows.map(r => r.video_id);
-    const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-      body:    JSON.stringify({
-        filters: { video_ids: videoIds },
-      }),
-    });
-    const data = await res.json();
-    if (debug) debugInfo.push({ video_ids_sent: videoIds, tiktok_response: data });
-    for (const v of data.data?.videos ?? []) {
-      const row = rows.find(r => r.video_id === v.id);
-      if (row) statsMap[row.id] = {
-        views:    v.view_count    ?? 0,
-        likes:    v.like_count    ?? 0,
-        comments: v.comment_count ?? 0,
-        shares:   v.share_count   ?? 0,
-      };
+    // TikTok video/query max is 20 IDs per request — batch accordingly
+    for (let i = 0; i < videoIds.length; i += 20) {
+      const batch = videoIds.slice(i, i + 20);
+      const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+        body:    JSON.stringify({ filters: { video_ids: batch } }),
+      });
+      const data = await res.json();
+      if (debug) debugInfo.push({ video_ids_sent: batch, tiktok_response: data });
+      for (const v of data.data?.videos ?? []) {
+        const row = rows.find(r => r.video_id === v.id);
+        if (row) statsMap[row.id] = {
+          views:    v.view_count    ?? 0,
+          likes:    v.like_count    ?? 0,
+          comments: v.comment_count ?? 0,
+          shares:   v.share_count   ?? 0,
+        };
+      }
     }
   }
 
@@ -1550,14 +1552,18 @@ app.get('/api/v1/stats', async (c) => {
   // Fetch live stats from TikTok
   const statsMap = {}; // keyed by video_id
   for (const [token, rows] of Object.entries(byToken)) {
-    const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-      body:    JSON.stringify({ filters: { video_ids: rows.map(r => r.video_id) } }),
-    });
-    const data = await res.json();
-    for (const v of data.data?.videos ?? []) {
-      statsMap[v.id] = { views: v.view_count ?? 0, likes: v.like_count ?? 0, comments: v.comment_count ?? 0, shares: v.share_count ?? 0 };
+    const videoIds = rows.map(r => r.video_id);
+    for (let i = 0; i < videoIds.length; i += 20) {
+      const batch = videoIds.slice(i, i + 20);
+      const res  = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+        body:    JSON.stringify({ filters: { video_ids: batch } }),
+      });
+      const data = await res.json();
+      for (const v of data.data?.videos ?? []) {
+        statsMap[v.id] = { views: v.view_count ?? 0, likes: v.like_count ?? 0, comments: v.comment_count ?? 0, shares: v.share_count ?? 0 };
+      }
     }
   }
 
