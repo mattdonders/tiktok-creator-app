@@ -993,6 +993,9 @@ app.get('/api/publish', async (c) => {
   if (status === 'PUBLISH_COMPLETE' || status === 'DOWNLOAD_COMPLETE') {
     await c.env.DB.prepare('UPDATE posts SET status = ?, video_id = ? WHERE publish_id = ?')
       .bind('published', videoId, publish_id).run();
+  } else if (status === 'SEND_TO_USER_INBOX') {
+    await c.env.DB.prepare('UPDATE posts SET status = ? WHERE publish_id = ?')
+      .bind('inbox', publish_id).run();
   } else if (status === 'FAILED') {
     await c.env.DB.prepare('UPDATE posts SET status = ? WHERE publish_id = ?')
       .bind('failed', publish_id).run();
@@ -1018,7 +1021,7 @@ app.get('/api/tiktok/creator_info', async (c) => {
 
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
-  const res = await fetch('https://open.tiktokapis.com/v2/post/publish/creator_info/', {
+  const res = await fetch('https://open.tiktokapis.com/v2/post/publish/creator_info/query/', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${account.access_token}`,
