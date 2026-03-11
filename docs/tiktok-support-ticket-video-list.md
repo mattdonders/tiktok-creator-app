@@ -12,7 +12,7 @@ as an addable product in the developer portal.
 
 ## App Details
 - **App ID:** 7614726586902005771
-- **Client Key:** [see Cloudflare TIKTOK_CLIENT_ID secret]
+- **Client Key:** aw6wvd9phoeqxemc
 - **Status:** Live / Production
 - **Approved product:** Content Posting API
 
