@@ -1725,7 +1725,10 @@ app.post('/api/tiktok/sync-posts', async (c) => {
         body:    JSON.stringify({ max_count: 20, cursor }),
       }
     );
-    const data = await res.json();
+    // TikTok returns video id as int64; JSON.parse loses precision on large ints — wrap as strings first
+    const rawText = await res.text();
+    const safeText = rawText.replace(/:(\s*)(\d{16,})/g, ':"$2"');
+    const data = JSON.parse(safeText);
     if (data.error?.code !== 'ok') break;
 
     const videos = data.data?.videos ?? [];
