@@ -1,0 +1,142 @@
+# TikTok Direct Post API — Demo Video Script
+
+**Purpose:** Demonstrate UX compliance with TikTok's Content Posting API guidelines
+**Audience:** TikTok API review team
+**Format:** Screen recording with narration (or clear on-screen captions)
+**Length:** ~2–3 minutes — don't rush, let each step breathe
+
+---
+
+## Before You Record
+
+- Use **desktop Chrome** — full screen, clean browser (hide bookmarks bar)
+- Navigate to **creatorpost.app** and log in as a real account (not pipeline@)
+- Have a short test video ready to select (doesn't need to post for real)
+- Make sure all 4 TikTok accounts are connected so the UI looks populated
+- Record at **1080p or higher**
+- Speak clearly or use large on-screen text callouts for each point
+
+---
+
+## The 5 Points — In Order
+
+TikTok's guidelines require these 5 items to be shown **sequentially**. Do not skip ahead or combine steps.
+
+---
+
+### Point 1 — Creator Info Query (Privacy Options)
+
+**What to show:** The app calls `/v2/post/publish/creator_info/query/` before posting and uses the returned privacy settings to populate the privacy dropdown.
+
+**On screen:**
+1. Select a TikTok account in the account selector
+2. Watch the privacy dropdown populate (or click into it)
+3. Show the available privacy options (Public, Friends, Private — whatever TikTok returns for that account)
+
+**Script:**
+> "Before any post is submitted, CreatorPost calls TikTok's creator info endpoint to fetch the allowed privacy levels for this specific account. The privacy dropdown is dynamically populated from that API response — we never hardcode options."
+
+---
+
+### Point 2 — Comment, Duet & Stitch Toggles (Default ON)
+
+**What to show:** All three interaction toggles are visible and **defaulted to ON** when the form loads. Then demonstrate that the user can turn them off.
+
+**On screen:**
+1. Scroll to the TikTok Settings panel (it expands when TikTok is selected)
+2. Pause on the three toggles — Comment, Duet, Stitch — all checked/on
+3. Click one toggle OFF, then back ON
+4. Narrate that these default to enabled per TikTok's guidelines
+
+**Script:**
+> "The Comment, Duet, and Stitch interaction settings are shown to the user and default to enabled, as required by TikTok's guidelines. Users can turn any of these off before posting, but the default is always on."
+
+---
+
+### Point 3 — Commercial Disclosure (THE KEY ONE — spend the most time here)
+
+**What to show:** The full commercial disclosure toggle interaction, including both sub-options ("Your Brand" and "Branded Content").
+
+**On screen:**
+1. Scroll to the **Disclosure** toggle — show it in the OFF state
+2. **Click it ON** — pause here so the reviewer can clearly see it activate
+3. Show the two sub-options appear: **"Your Brand"** and **"Branded Content"**
+4. Click **"Your Brand"** — narrate what it means
+5. Then click **"Branded Content"** — narrate what it means
+6. Show that the consent/warning text updates accordingly
+7. Toggle back to a selected state before moving on
+
+**Script:**
+> "CreatorPost includes the required Content Disclosure setting. When a user enables disclosure, two options appear: 'Your Brand' — for content that promotes your own business — and 'Branded Content' — for paid partnerships or sponsored content. TikTok's promotional content policy is linked directly in this panel. Users must actively choose one before posting when disclosure is enabled."
+
+> *(While showing "Branded Content" selected):* "When Branded Content is selected, the app surfaces TikTok's policy link and the required acknowledgment text."
+
+---
+
+### Point 4 — Music Usage Consent Text
+
+**What to show:** The consent text referencing TikTok's Music Usage Confirmation page is visible in the UI.
+
+**On screen:**
+1. Point to / highlight the music consent text below the disclosure section
+2. Show that it contains a clickable link to TikTok's Music Usage Confirmation page
+3. Click the link so the reviewer can see it goes to the correct TikTok URL
+
+**Script:**
+> "The posting form includes TikTok's required music usage consent language, with a direct link to TikTok's Music Usage Confirmation page. This is displayed to every user before they submit a post."
+
+---
+
+### Point 5 — Video Preview Before Posting
+
+**What to show:** The user can preview their video in the app before it's submitted to TikTok.
+
+**On screen:**
+1. Drop a video file into the upload area (or select one)
+2. Show the video preview rendering in the player
+3. Play it briefly so it's clear it's a real preview, not a thumbnail
+4. Then show the Post button — still available but only after preview loads
+
+**Script:**
+> "Before a user can post, a full video preview is shown directly in the app. The video plays in context so creators can review their content before it's submitted to TikTok. The post action is only available after the video has loaded and can be previewed."
+
+---
+
+## Closing Shot
+
+Pan back to show the full posting form with all elements visible:
+- Account selector
+- Caption field
+- Privacy dropdown (populated)
+- Interaction toggles (Comment, Duet, Stitch)
+- Disclosure toggle + sub-options
+- Music consent text
+- Video preview
+- Post button
+
+**Script:**
+> "All five required UX elements from TikTok's Content Posting API guidelines are present in CreatorPost's posting flow: creator info query for privacy options, interaction toggles defaulting to on, commercial content disclosure with both sub-options, music usage consent, and video preview. Thank you for reviewing."
+
+---
+
+## Recording Tips
+
+- **Pause 2–3 seconds** on each element before moving on — reviewers watch at 1x speed
+- **Zoom in** on toggles and dropdowns when interacting with them — small UI elements are hard to see
+- Use **on-screen text callouts** (like "Point 3: Content Disclosure") if not narrating
+- Don't let the recording exceed **3 minutes** — keep it tight
+- Export as **MP4, 1080p minimum**
+
+---
+
+## Submission Strategy
+
+1. **Submit this video with the next application** — reference the previous rejection in the notes field and state explicitly: *"Previous rejection cited UX guidelines. This video demonstrates all 5 required points in order per the guidelines."*
+
+2. **If rejected a third time with the same message**, immediately open a support ticket at developers.tiktok.com → Support:
+   - Include both rejection emails
+   - Reference the specific points (1–5) and timestamp in your video where each one appears
+   - Ask for a specific explanation of which point is non-compliant
+   - A ticket forces a human to look at it vs. automated review
+
+The ticket *after* a third rejection carries more weight than opening one preemptively — you can show a pattern of good-faith attempts with documented evidence.
