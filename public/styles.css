@@ -63,16 +63,24 @@ nav {
 nav ul {
   list-style: none;
   display: flex;
-  gap: 2rem;
+  gap: 0.25rem;
 }
 
 nav ul a {
   color: var(--muted);
   font-size: 0.9rem;
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.15s;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
 }
 
-nav ul a:hover { color: var(--text); text-decoration: none; }
+nav ul a:hover { color: var(--text); text-decoration: none; background: rgba(255,255,255,0.05); }
+
+nav ul a.active {
+  color: var(--text);
+  font-weight: 600;
+  background: rgba(255,255,255,0.08);
+}
 
 /* ── Buttons ── */
 .btn {
