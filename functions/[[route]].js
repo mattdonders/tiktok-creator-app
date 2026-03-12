@@ -1760,21 +1760,12 @@ app.post('/api/v1/publish', async (c) => {
 
 // ── API — TikTok sync (dev only) ──────────────────────────────────────────────
 
-// POST /api/tiktok/sync-posts — dev only (@mattdonders.com)
-// Imports all published TikTok videos for an account into the posts table
-app.post('/api/tiktok/sync-posts', async (c) => {
-  const session = await getSession(c);
-  if (!session) return c.json({ error: 'not_authenticated' }, 401);
-  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(session.user_id).first();
-  if (!user?.email?.endsWith('@mattdonders.com')) return c.json({ error: 'forbidden' }, 403);
-
-  const { account_id } = await c.req.json().catch(() => ({}));
-  if (!account_id) return c.json({ error: 'account_id required' }, 400);
-
+// Shared sync logic — used by both dev UI and v1 API endpoints
+async function runTikTokSync(c, user_id, account_id) {
   const account = await c.env.DB.prepare(
     'SELECT id, access_token FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
-  ).bind(account_id, session.user_id, 'tiktok').first();
-  if (!account) return c.json({ error: 'Account not found' }, 404);
+  ).bind(account_id, user_id, 'tiktok').first();
+  if (!account) return { error: 'Account not found', status: 404 };
 
   // Fetch follower count (requires user.info.stats scope — graceful fallback)
   let followerCount = null;
@@ -1790,7 +1781,7 @@ app.post('/api/tiktok/sync-posts', async (c) => {
   // Paginate through video list
   let cursor = 0, hasMore = true, imported = 0, skipped = 0;
   while (hasMore) {
-    const res  = await fetch(
+    const res = await fetch(
       'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url',
       {
         method:  'POST',
@@ -1799,9 +1790,9 @@ app.post('/api/tiktok/sync-posts', async (c) => {
       }
     );
     // TikTok returns video id as int64; JSON.parse loses precision on large ints — wrap as strings first
-    const rawText = await res.text();
+    const rawText  = await res.text();
     const safeText = rawText.replace(/:(\s*)(\d{16,})/g, ':"$2"');
-    const data = JSON.parse(safeText);
+    const data     = JSON.parse(safeText);
     if (data.error?.code !== 'ok') break;
 
     const videos = data.data?.videos ?? [];
@@ -1813,12 +1804,11 @@ app.post('/api/tiktok/sync-posts', async (c) => {
       const videoId  = String(v.id ?? '');
       const createAt = v.create_time ?? now();
 
-      // Skip if video_id already exists for this user (no unique constraint on video_id, so WHERE NOT EXISTS)
       const result = await c.env.DB.prepare(`
         INSERT INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
         SELECT ?, ?, ?, 'tiktok', ?, 'published', ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
-      `).bind(newId(), session.user_id, account_id, caption, videoId, createAt, session.user_id, videoId).run();
+      `).bind(newId(), user_id, account_id, caption, videoId, createAt, user_id, videoId).run();
 
       if (result.meta.changes > 0) imported++;
       else skipped++;
@@ -1827,8 +1817,37 @@ app.post('/api/tiktok/sync-posts', async (c) => {
     if (!hasMore || videos.length === 0) break;
   }
 
-  log(c, { type: 'event', event: 'tiktok_sync', user_id: session.user_id, account_id, imported, skipped });
-  return c.json({ ok: true, imported, skipped, follower_count: followerCount });
+  return { ok: true, imported, skipped, follower_count: followerCount };
+}
+
+// POST /api/tiktok/sync-posts — dev only (@mattdonders.com)
+app.post('/api/tiktok/sync-posts', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(session.user_id).first();
+  if (!user?.email?.endsWith('@mattdonders.com')) return c.json({ error: 'forbidden' }, 403);
+
+  const { account_id } = await c.req.json().catch(() => ({}));
+  if (!account_id) return c.json({ error: 'account_id required' }, 400);
+
+  const result = await runTikTokSync(c, session.user_id, account_id);
+  if (result.error) return c.json({ error: result.error }, result.status);
+  log(c, { type: 'event', event: 'tiktok_sync', user_id: session.user_id, account_id, ...result });
+  return c.json(result);
+});
+
+// POST /api/v1/sync — pipeline endpoint (Bearer cp_... auth)
+app.post('/api/v1/sync', async (c) => {
+  const session = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const { account_id } = await c.req.json().catch(() => ({}));
+  if (!account_id) return c.json({ error: 'account_id required' }, 400);
+
+  const result = await runTikTokSync(c, session.user_id, account_id);
+  if (result.error) return c.json({ error: result.error }, result.status);
+  log(c, { type: 'event', event: 'tiktok_sync_v1', user_id: session.user_id, account_id, ...result });
+  return c.json(result);
 });
 
 // ── Cron: refresh expiring tokens ────────────────────────────────────────────
