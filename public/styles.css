@@ -70,8 +70,8 @@ nav ul {
 nav ul a {
   color: var(--muted);
   font-size: 0.95rem;
-  font-weight: 500;
-  letter-spacing: -0.015em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   transition: color 0.15s, background 0.15s;
   padding: 0.3rem 0.7rem;
   border-radius: 6px;
@@ -81,9 +81,9 @@ nav ul a:hover { color: var(--text); text-decoration: none; background: rgba(255
 
 nav ul a.active {
   color: var(--text);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  background: rgba(255,255,255,0.08);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  background: rgba(124,58,237,0.15);
 }
 
 /* ── Buttons ── */
