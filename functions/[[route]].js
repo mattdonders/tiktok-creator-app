@@ -1813,11 +1813,12 @@ app.post('/api/tiktok/sync-posts', async (c) => {
       const videoId  = String(v.id ?? '');
       const createAt = v.create_time ?? now();
 
-      // INSERT OR IGNORE — never overwrite existing posts
+      // Skip if video_id already exists for this user (no unique constraint on video_id, so WHERE NOT EXISTS)
       const result = await c.env.DB.prepare(`
-        INSERT OR IGNORE INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
-        VALUES (?, ?, ?, 'tiktok', ?, 'published', ?, ?)
-      `).bind(newId(), session.user_id, account_id, caption, videoId, createAt).run();
+        INSERT INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
+        SELECT ?, ?, ?, 'tiktok', ?, 'published', ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
+      `).bind(newId(), session.user_id, account_id, caption, videoId, createAt, session.user_id, videoId).run();
 
       if (result.meta.changes > 0) imported++;
       else skipped++;
