@@ -1793,12 +1793,24 @@ app.post('/api/v1/publish/photo', async (c) => {
     photo_images:      images,
   };
 
-  const initRes  = await fetch(TIKTOK_PHOTO_INIT_URL, {
+  // Try DIRECT_POST first — falls back to MEDIA_UPLOAD (inbox) if not approved yet
+  let initRes  = await fetch(TIKTOK_PHOTO_INIT_URL, {
     method:  'POST',
     headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-    body:    JSON.stringify({ post_info, source_info, media_type: 'PHOTO' }),
+    body:    JSON.stringify({ post_info, source_info, media_type: 'PHOTO', post_mode: 'DIRECT_POST' }),
   });
-  const initData = await initRes.json();
+  let initData  = await initRes.json();
+  let usedInbox = false;
+
+  if (!initRes.ok || initData.error?.code !== 'ok') {
+    initRes   = await fetch(TIKTOK_PHOTO_INIT_URL, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+      body:    JSON.stringify({ post_info, source_info, media_type: 'PHOTO', post_mode: 'MEDIA_UPLOAD' }),
+    });
+    initData  = await initRes.json();
+    usedInbox = true;
+  }
 
   if (!initRes.ok || initData.error?.code !== 'ok') {
     log(c, { type: 'error', event: 'api_publish_photo_failed', tiktok_error: initData.error?.code, user_id: session.user_id });
@@ -1813,9 +1825,9 @@ app.post('/api/v1/publish/photo', async (c) => {
     VALUES (?, ?, ?, 'tiktok', ?, 'processing', ?, ?)
   `).bind(postId, session.user_id, account.id, caption.slice(0, 2200), publish_id, now()).run();
 
-  log(c, { type: 'event', event: 'api_publish_photo', account_id: account.id, user_id: session.user_id, image_count: images.length });
+  log(c, { type: 'event', event: 'api_publish_photo', account_id: account.id, user_id: session.user_id, image_count: images.length, inbox: usedInbox });
 
-  return c.json({ ok: true, publish_id, post_id: postId });
+  return c.json({ ok: true, publish_id, post_id: postId, inbox: usedInbox });
 });
 
 // ── API — TikTok sync (dev only) ──────────────────────────────────────────────
