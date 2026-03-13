@@ -1788,6 +1788,7 @@ app.post('/api/v1/publish/photo', async (c) => {
       if (new URL(url).hostname.endsWith('creatorpost.app')) return url;
     } catch { /* invalid URL — let TikTok reject it */ return url; }
     const imgRes  = await fetch(url);
+    if (!imgRes.ok) throw new Error(`Failed to fetch image ${url}: ${imgRes.status}`);
     const imgBuf  = await imgRes.arrayBuffer();
     const ext     = url.split('?')[0].split('.').pop() || 'jpg';
     const r2Key   = `photo-uploads/${newId()}.${ext}`;
