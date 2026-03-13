@@ -693,6 +693,7 @@
                     <div style="font-size:0.75rem;color:var(--muted);margin-top:0.15rem">Paid partnership — you received compensation to promote a third party</div>
                   </div>
                 </label>
+                <div id="disclosure-validation" style="display:none;font-size:0.75rem;color:#f87171;margin-top:0.5rem">You need to indicate if your content promotes yourself, a third party, or both.</div>
               </div>
             </div>
 
@@ -1032,6 +1033,7 @@
 
     function onDisclosureToggle(el) {
       document.getElementById('disclosure-opts').style.display = el.checked ? 'flex' : 'none';
+      document.getElementById('disclosure-validation').style.display = 'none';
     }
 
     function updateSubmitBtn() {
@@ -1311,8 +1313,10 @@
       const brandContent = document.getElementById('tiktok-brand-content').checked;
 
       if (disclosure && !brandOrganic && !brandContent) {
-        throw new Error('Select at least one disclosure option (Your brand or Branded content).');
+        document.getElementById('disclosure-validation').style.display = 'block';
+        throw new Error('You need to indicate if your content promotes yourself, a third party, or both.');
       }
+      document.getElementById('disclosure-validation').style.display = 'none';
 
       // Duration check
       const preview = document.getElementById('video-preview');
