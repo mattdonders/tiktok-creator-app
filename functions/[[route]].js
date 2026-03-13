@@ -1822,17 +1822,20 @@ app.post('/api/v1/publish/photo', async (c) => {
   let usedInbox = false;
 
   if (!initRes.ok || initData.error?.code !== 'ok') {
+    log(c, { type: 'event', event: 'api_publish_photo_direct_post_failed', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id });
+    // auto_add_music is DIRECT_POST only — strip it for MEDIA_UPLOAD fallback
+    const { auto_add_music: _, ...post_info_inbox } = post_info;
     initRes   = await fetch(TIKTOK_PHOTO_INIT_URL, {
       method:  'POST',
       headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-      body:    JSON.stringify({ post_info, source_info, media_type: 'PHOTO', post_mode: 'MEDIA_UPLOAD' }),
+      body:    JSON.stringify({ post_info: post_info_inbox, source_info, media_type: 'PHOTO', post_mode: 'MEDIA_UPLOAD' }),
     });
     initData  = await initRes.json();
     usedInbox = true;
   }
 
   if (!initRes.ok || initData.error?.code !== 'ok') {
-    log(c, { type: 'error', event: 'api_publish_photo_failed', tiktok_error: initData.error?.code, user_id: session.user_id });
+    log(c, { type: 'error', event: 'api_publish_photo_failed', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id });
     return c.json({ error: initData.error?.message ?? 'TikTok photo init failed', tiktok_raw: initData }, 500);
   }
 
