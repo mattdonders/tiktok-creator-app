@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS connected_accounts (
   access_token     TEXT    NOT NULL,
   refresh_token    TEXT,
   token_expires_at INTEGER,
+  follower_count   INTEGER,
   created_at       INTEGER NOT NULL,
   UNIQUE(user_id, platform, platform_user_id)
 );

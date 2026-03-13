@@ -1594,7 +1594,8 @@ app.get('/api/v1/stats', async (c) => {
 
   const { results } = await c.env.DB.prepare(`
     SELECT p.id, p.video_id, p.caption, p.status, p.created_at,
-           a.id AS account_id, a.display_name AS account, a.access_token
+           a.id AS account_id, a.display_name AS account, a.access_token,
+           a.follower_count
     FROM posts p
     JOIN connected_accounts a ON p.account_id = a.id
     WHERE p.user_id = ? AND p.video_id IS NOT NULL AND p.platform = 'tiktok'
@@ -1630,14 +1631,15 @@ app.get('/api/v1/stats', async (c) => {
   }
 
   const posts = results.map(({ access_token, ...r }) => ({
-    post_id:    r.id,
-    video_id:   r.video_id,
-    account_id: r.account_id,
-    account:    r.account,
-    caption:    r.caption,
-    status:     r.status,
-    created_at: r.created_at,
-    stats:      statsMap[r.video_id] ?? null,
+    post_id:        r.id,
+    video_id:       r.video_id,
+    account_id:     r.account_id,
+    account:        r.account,
+    follower_count: r.follower_count ?? null,
+    caption:        r.caption,
+    status:         r.status,
+    created_at:     r.created_at,
+    stats:          statsMap[r.video_id] ?? null,
   }));
 
   return c.json(posts);
@@ -1776,6 +1778,10 @@ async function runTikTokSync(c, user_id, account_id) {
     });
     const uData = await uRes.json();
     followerCount = uData.data?.user?.follower_count ?? null;
+    if (followerCount !== null) {
+      await c.env.DB.prepare('UPDATE connected_accounts SET follower_count = ? WHERE id = ?')
+        .bind(followerCount, account_id).run();
+    }
   } catch { /* scope not granted yet — skip */ }
 
   // Paginate through video list
