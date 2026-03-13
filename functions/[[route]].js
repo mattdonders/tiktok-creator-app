@@ -813,7 +813,7 @@ app.get('/api/me', async (c) => {
     .bind(session.user_id).first();
 
   const accounts = await c.env.DB.prepare(
-    'SELECT id, platform, platform_user_id, display_name, avatar_url, token_expires_at FROM connected_accounts WHERE user_id = ?'
+    'SELECT id, platform, platform_user_id, display_name, avatar_url, username, token_expires_at FROM connected_accounts WHERE user_id = ?'
   ).bind(session.user_id).all();
 
   return c.json({ user, accounts: accounts.results });
