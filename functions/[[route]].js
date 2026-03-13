@@ -838,6 +838,7 @@ app.patch('/api/profile', async (c) => {
 
 const TIKTOK_INIT_URL       = 'https://open.tiktokapis.com/v2/post/publish/video/init/';
 const TIKTOK_INBOX_INIT_URL = 'https://open.tiktokapis.com/v2/post/publish/inbox/video/init/';
+const TIKTOK_PHOTO_INIT_URL = 'https://open.tiktokapis.com/v2/post/publish/content/init/';
 const TIKTOK_STATUS_URL     = 'https://open.tiktokapis.com/v2/post/publish/status/fetch/';
 const MAX_FILE_SIZE         = 50 * 1024 * 1024;
 
@@ -1759,6 +1760,62 @@ app.post('/api/v1/publish', async (c) => {
   log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox, source: sourceInfo.source });
 
   return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: sourceInfo.source });
+});
+
+// POST /api/v1/publish/photo — publish a photo carousel to TikTok
+app.post('/api/v1/publish/photo', async (c) => {
+  const session = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const { account_id, caption, images, music_id } = await c.req.json().catch(() => ({}));
+
+  if (!account_id)                         return c.json({ error: 'account_id required' }, 400);
+  if (!caption)                            return c.json({ error: 'caption required' }, 400);
+  if (!Array.isArray(images) || !images.length) return c.json({ error: 'images must be a non-empty array of URLs' }, 400);
+  if (images.length > 35)                  return c.json({ error: 'TikTok supports a maximum of 35 images per carousel' }, 400);
+
+  const account = await c.env.DB.prepare(
+    'SELECT * FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(account_id, session.user_id, 'tiktok').first();
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  const post_info = {
+    title:           caption.slice(0, 2200),
+    privacy_level:   'PUBLIC_TO_EVERYONE',
+    disable_comment: false,
+    auto_add_music:  !music_id,
+    ...(music_id ? { music_id: String(music_id) } : {}),
+  };
+
+  const source_info = {
+    source:            'PULL_FROM_URL',
+    photo_cover_index: 0,
+    photo_images:      images,
+  };
+
+  const initRes  = await fetch(TIKTOK_PHOTO_INIT_URL, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+    body:    JSON.stringify({ post_info, source_info, media_type: 'PHOTO' }),
+  });
+  const initData = await initRes.json();
+
+  if (!initRes.ok || initData.error?.code !== 'ok') {
+    log(c, { type: 'error', event: 'api_publish_photo_failed', tiktok_error: initData.error?.code, user_id: session.user_id });
+    return c.json({ error: initData.error?.message ?? 'TikTok photo init failed', tiktok_raw: initData }, 500);
+  }
+
+  const { publish_id } = initData.data;
+
+  const postId = newId();
+  await c.env.DB.prepare(`
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
+    VALUES (?, ?, ?, 'tiktok', ?, 'processing', ?, ?)
+  `).bind(postId, session.user_id, account.id, caption.slice(0, 2200), publish_id, now()).run();
+
+  log(c, { type: 'event', event: 'api_publish_photo', account_id: account.id, user_id: session.user_id, image_count: images.length });
+
+  return c.json({ ok: true, publish_id, post_id: postId });
 });
 
 // ── API — TikTok sync (dev only) ──────────────────────────────────────────────

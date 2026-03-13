@@ -62,6 +62,46 @@ Upload and publish a video to TikTok.
 
 ---
 
+### `POST /api/v1/publish/photo`
+
+Publish a photo carousel to TikTok. Images are fetched by TikTok directly from the provided URLs — upload to B2 first and pass the public URLs.
+
+**Request:** JSON body
+
+```json
+{
+  "account_id": "uuid",
+  "caption":    "Your caption here",
+  "images":     ["https://your-bucket.com/img1.jpg", "https://your-bucket.com/img2.jpg"],
+  "music_id":   "7123456789012345678"
+}
+```
+
+| Field        | Type            | Required | Description |
+|-------------|-----------------|----------|-------------|
+| `account_id` | string          | yes      | Account UUID from `/api/v1/accounts` |
+| `caption`    | string          | yes      | Post caption, max 2200 chars |
+| `images`     | array of strings | yes     | Public image URLs, in display order. Max 35. |
+| `music_id`   | string          | no       | TikTok sound ID. If omitted, TikTok auto-selects music. |
+
+**Response:**
+```json
+{
+  "ok": true,
+  "publish_id": "v_pub_...",
+  "post_id": "uuid"
+}
+```
+
+**Notes:**
+- Images are displayed in array order
+- `photo_cover_index` is always `0` (first image) — contact if you need this configurable
+- If `music_id` is omitted, `auto_add_music: true` is sent so TikTok picks trending audio
+- No inbox fallback for photo posts — requires Direct Post approval (same as video)
+- Rate limits: same as video, no limits enforced on our side
+
+---
+
 ### `POST /api/v1/sync`
 
 Syncs all published TikTok videos for an account into the CreatorPost database. Also refreshes the stored `follower_count` for that account.
