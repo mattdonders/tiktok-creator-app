@@ -1877,7 +1877,7 @@ async function runTikTokSync(c, user_id, account_id) {
   let cursor = 0, hasMore = true, imported = 0, skipped = 0;
   while (hasMore) {
     const res = await fetch(
-      'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url',
+      'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url,embed_type',
       {
         method:  'POST',
         headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
@@ -1895,17 +1895,37 @@ async function runTikTokSync(c, user_id, account_id) {
     cursor       = data.data?.cursor   ?? 0;
 
     for (const v of videos) {
-      const caption  = v.video_description || v.title || '';
+      const caption  = v.video_description || v.title || v.description || '';
       const videoId  = String(v.id ?? '');
       const createAt = v.create_time ?? now();
 
-      const result = await c.env.DB.prepare(`
+      // First, try to claim an existing processing post for this account that has no video_id yet
+      // (e.g. a photo post or video that was published via our API but never had its video_id resolved)
+      // Preserve existing caption if non-empty; only fill in if blank.
+      const updateResult = await c.env.DB.prepare(`
+        UPDATE posts SET
+          video_id = ?,
+          status   = 'published',
+          caption  = CASE WHEN caption = '' OR caption IS NULL THEN ? ELSE caption END
+        WHERE id = (
+          SELECT id FROM posts
+          WHERE user_id = ? AND account_id = ? AND video_id IS NULL AND status = 'processing'
+          ORDER BY ABS(created_at - ?) ASC
+          LIMIT 1
+        )
+        AND NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
+      `).bind(videoId, caption, user_id, account_id, createAt, user_id, videoId).run();
+
+      if (updateResult.meta.changes > 0) { imported++; continue; }
+
+      // No matching processing post — insert as new if not already present
+      const insertResult = await c.env.DB.prepare(`
         INSERT INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
         SELECT ?, ?, ?, 'tiktok', ?, 'published', ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
       `).bind(newId(), user_id, account_id, caption, videoId, createAt, user_id, videoId).run();
 
-      if (result.meta.changes > 0) imported++;
+      if (insertResult.meta.changes > 0) imported++;
       else skipped++;
     }
 
