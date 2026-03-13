@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS connected_accounts (
   access_token     TEXT    NOT NULL,
   refresh_token    TEXT,
   token_expires_at INTEGER,
+  username                  TEXT,
   follower_count            INTEGER,
   follower_count_updated_at INTEGER,
   created_at                INTEGER NOT NULL,

@@ -334,7 +334,7 @@
       list.innerHTML = accounts.map(acc => {
         const platform  = acc.platform ?? 'tiktok';
         const name      = escHtml(acc.display_name ?? PLATFORM_LABEL[platform] ?? 'Account');
-        const handle    = acc.platform_user_id ? `@${escHtml(acc.platform_user_id)}` : '';
+        const handle    = acc.username ? `@${escHtml(acc.username)}` : (acc.platform_user_id ? `@${escHtml(acc.platform_user_id)}` : '');
         const initial   = (acc.display_name ?? 'A').match(/[a-zA-Z0-9]/)?.[0]?.toUpperCase() ?? 'A';
         const avatar    = acc.avatar_url ?? '';
         const id        = escHtml(acc.id ?? '');

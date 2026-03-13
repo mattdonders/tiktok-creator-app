@@ -749,11 +749,12 @@ app.get('/callback', async (c) => {
   try {
   await c.env.DB.prepare(`
     INSERT INTO connected_accounts
-      (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, refresh_token, token_expires_at, created_at)
-    VALUES (?, ?, 'tiktok', ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, platform, platform_user_id, display_name, avatar_url, username, access_token, refresh_token, token_expires_at, created_at)
+    VALUES (?, ?, 'tiktok', ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, platform, platform_user_id) DO UPDATE SET
       display_name = excluded.display_name,
       avatar_url   = excluded.avatar_url,
+      username     = excluded.username,
       access_token = excluded.access_token,
       refresh_token = excluded.refresh_token,
       token_expires_at = excluded.token_expires_at
@@ -762,6 +763,7 @@ app.get('/callback', async (c) => {
     tokenData.open_id,
     profile.display_name ?? null,
     profile.avatar_url ?? null,
+    profile.username ?? null,
     tokenData.access_token,
     tokenData.refresh_token ?? null,
     tokenData.expires_in ? now() + tokenData.expires_in : null,
@@ -1310,7 +1312,7 @@ async function refreshTikTokToken(refreshToken, env) {
 
 async function fetchTikTokProfile(accessToken) {
   const res  = await fetch(
-    'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name',
+    'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,username',
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
@@ -1912,6 +1914,36 @@ async function runTikTokSync(c, user_id, account_id) {
 
   return { ok: true, imported, skipped, follower_count: followerCount };
 }
+
+// POST /api/tiktok/backfill-usernames — dev only (@mattdonders.com), fetches username for all connected TikTok accounts
+app.post('/api/tiktok/backfill-usernames', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(session.user_id).first();
+  if (!user?.email?.endsWith('@mattdonders.com')) return c.json({ error: 'forbidden' }, 403);
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, access_token FROM connected_accounts WHERE user_id = ? AND platform = 'tiktok'`
+  ).bind(session.user_id).all();
+
+  const updated = [], failed = [];
+  for (const acc of results) {
+    try {
+      const { user: profile } = await fetchTikTokProfile(acc.access_token);
+      if (profile.username) {
+        await c.env.DB.prepare('UPDATE connected_accounts SET username = ? WHERE id = ?')
+          .bind(profile.username, acc.id).run();
+        updated.push({ id: acc.id, username: profile.username });
+      } else {
+        failed.push({ id: acc.id, reason: 'no username returned' });
+      }
+    } catch (err) {
+      failed.push({ id: acc.id, reason: err.message });
+    }
+  }
+
+  return c.json({ ok: true, updated, failed });
+});
 
 // POST /api/tiktok/sync-posts — dev only (@mattdonders.com)
 app.post('/api/tiktok/sync-posts', async (c) => {
