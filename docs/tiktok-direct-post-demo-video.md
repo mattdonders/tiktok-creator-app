@@ -55,21 +55,25 @@ TikTok's guidelines require these 5 items to be shown **sequentially**. Do not s
 
 ### Point 3 — Commercial Disclosure (THE KEY ONE — spend the most time here)
 
-**What to show:** The full commercial disclosure toggle interaction, including both sub-options ("Your Brand" and "Branded Content").
+**What to show:** The full disclosure interaction including: the toggle, both sub-options, the **validation error when nothing is selected**, and then a successful selection. TikTok support specifically called out Point 3a — you must show the error state.
 
 **On screen:**
 1. Scroll to the **Disclosure** toggle — show it in the OFF state
-2. **Click it ON** — pause here so the reviewer can clearly see it activate
-3. Show the two sub-options appear: **"Your Brand"** and **"Branded Content"**
-4. Click **"Your Brand"** — narrate what it means
-5. Then click **"Branded Content"** — narrate what it means
-6. Show that the consent/warning text updates accordingly
-7. Toggle back to a selected state before moving on
+2. **Click it ON** — pause 2 seconds so the reviewer sees it activate
+3. Show the two sub-options appear: **"Your Brand"** and **"Branded Content"** — both unchecked
+4. **Click the Post button without selecting either checkbox** — this is the new required step
+5. The inline error appears in red directly under the checkboxes: *"You need to indicate if your content promotes yourself, a third party, or both."* — **pause here, let it sit on screen for 3+ seconds**
+6. Now click **"Your Brand"** — show the error message disappear
+7. Narrate what "Your Brand" means
+8. Uncheck "Your Brand", check **"Branded Content"** — narrate what it means
+9. Leave "Branded Content" checked before moving on
 
 **Script:**
-> "CreatorPost includes the required Content Disclosure setting. When a user enables disclosure, two options appear: 'Your Brand' — for content that promotes your own business — and 'Branded Content' — for paid partnerships or sponsored content. TikTok's promotional content policy is linked directly in this panel. Users must actively choose one before posting when disclosure is enabled."
+> "CreatorPost includes the required Content Disclosure setting. When a user enables disclosure, two options appear: 'Your Brand' — for content that promotes your own business or personal brand — and 'Branded Content' — for paid partnerships where you received compensation to promote a third party."
 
-> *(While showing "Branded Content" selected):* "When Branded Content is selected, the app surfaces TikTok's policy link and the required acknowledgment text."
+> *(After clicking Post with nothing selected and the error appears):* "If the user tries to post without selecting an option, the app blocks submission and displays the required notification: 'You need to indicate if your content promotes yourself, a third party, or both.' The post cannot proceed until a selection is made."
+
+> *(After selecting "Your Brand" and the error clears):* "Once a selection is made the validation clears and the user can continue. TikTok's promotional content policy is linked directly in this panel."
 
 ---
 
@@ -131,12 +135,12 @@ Pan back to show the full posting form with all elements visible:
 
 ## Submission Strategy
 
-1. **Submit this video with the next application** — reference the previous rejection in the notes field and state explicitly: *"Previous rejection cited UX guidelines. This video demonstrates all 5 required points in order per the guidelines."*
+This is the **third submission**. In the notes field, reference the support ticket response directly:
 
-2. **If rejected a third time with the same message**, immediately open a support ticket at developers.tiktok.com → Support:
-   - Include both rejection emails
-   - Reference the specific points (1–5) and timestamp in your video where each one appears
-   - Ask for a specific explanation of which point is non-compliant
-   - A ticket forces a human to look at it vs. automated review
+> *"Previous rejection and subsequent support ticket identified Point 3a specifically — the validation message when Content Disclosure is enabled but no option is selected. This has been implemented. The demo video shows: (1) disclosure toggled on with no selection, (2) post attempted, (3) required error message displayed — 'You need to indicate if your content promotes yourself, a third party, or both.' — (4) selection made, error clears, post proceeds. All 5 points are demonstrated in order."*
 
-The ticket *after* a third rejection carries more weight than opening one preemptively — you can show a pattern of good-faith attempts with documented evidence.
+**If rejected again after this**, open a support ticket immediately and escalate:
+- Attach the support email where they specified Point 3a
+- Include a timestamp in the video showing exactly when the error message appears
+- State that the exact required string from their own guidelines is now implemented verbatim
+- Ask to be escalated to a senior reviewer
