@@ -127,6 +127,7 @@ Returns live per-video stats for the last 100 published TikTok posts. Stats are 
 | `account_id`     | Account UUID |
 | `account`        | Account display name |
 | `follower_count` | Last known follower count — updated each time `/api/v1/sync` is called for this account |
+| `follower_count_updated_at` | Unix timestamp of when `follower_count` was last refreshed. Use this to decide whether to call `/api/v1/sync` before collecting stats — if `null` or `> 86400` seconds ago, trigger a sync first |
 | `caption`        | Video caption stored at time of post/sync |
 | `status`         | `published`, `inbox`, `processing`, `failed`, `scheduled` |
 | `created_at`     | Unix timestamp (seconds) |
