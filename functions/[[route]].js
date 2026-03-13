@@ -1779,6 +1779,23 @@ app.post('/api/v1/publish/photo', async (c) => {
   ).bind(account_id, session.user_id, 'tiktok').first();
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
+  // Proxy any images not hosted on creatorpost.app through R2
+  // (TikTok requires domain verification for PULL_FROM_URL — creatorpost.app is already verified)
+  const finalImages = await Promise.all(images.map(async (url) => {
+    try {
+      if (new URL(url).hostname.endsWith('creatorpost.app')) return url;
+    } catch { /* invalid URL — let TikTok reject it */ return url; }
+    const imgRes  = await fetch(url);
+    const imgBuf  = await imgRes.arrayBuffer();
+    const ext     = url.split('?')[0].split('.').pop() || 'jpg';
+    const r2Key   = `photo-uploads/${newId()}.${ext}`;
+    await c.env.MEDIA_BUCKET.put(r2Key, imgBuf, {
+      httpMetadata:   { contentType: imgRes.headers.get('content-type') || 'image/jpeg' },
+      customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
+    });
+    return `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
+  }));
+
   const post_info = {
     title:           caption.slice(0, 2200),
     privacy_level:   'PUBLIC_TO_EVERYONE',
@@ -1790,7 +1807,7 @@ app.post('/api/v1/publish/photo', async (c) => {
   const source_info = {
     source:            'PULL_FROM_URL',
     photo_cover_index: 0,
-    photo_images:      images,
+    photo_images:      finalImages,
   };
 
   // Try DIRECT_POST first — falls back to MEDIA_UPLOAD (inbox) if not approved yet
