@@ -1892,7 +1892,10 @@ async function runTikTokSync(c, user_id, account_id) {
     const rawText  = await res.text();
     const safeText = rawText.replace(/:(\s*)(\d{16,})/g, ':"$2"');
     const data     = JSON.parse(safeText);
-    if (data.error?.code !== 'ok') break;
+    if (data.error?.code !== 'ok') {
+      log(c, { type: 'error', event: 'tiktok_sync_video_list_failed', tiktok_error: data.error?.code, tiktok_message: data.error?.message, account_id, user_id });
+      break;
+    }
 
     const videos = data.data?.videos ?? [];
     hasMore      = data.data?.has_more ?? false;
