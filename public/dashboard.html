@@ -1713,7 +1713,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:0.5rem">
             <div class="post-status ${escHtml(p.status)}">${{published:'published',processing:'processing',failed:'failed',scheduled:'scheduled',inbox:'in drafts'}[p.status] ?? p.status}</div>
-            ${p.status === 'processing' && p.publish_id && p.account_id && p.platform === 'tiktok' ? `<button onclick="recheckStatus('${escHtml(p.publish_id)}','${escHtml(p.account_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Recheck status">↻</button>` : ''}
+            ${(p.status === 'processing' || p.status === 'inbox') && p.publish_id && p.account_id && p.platform === 'tiktok' ? `<button onclick="recheckStatus('${escHtml(p.publish_id)}','${escHtml(p.account_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Recheck status">↻</button>` : ''}
             ${isDev && p.status === 'published' && p.platform === 'tiktok' && p.video_id ? `<button onclick="refreshCaption('${escHtml(p.id)}','${escHtml(p.video_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Re-fetch caption">↺</button>` : ''}
             <button onclick="deletePost('${escHtml(p.id)}')" style="background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px;line-height:1" title="Remove">✕</button>
           </div>

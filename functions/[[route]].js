@@ -1913,7 +1913,7 @@ async function runTikTokSync(c, user_id, account_id) {
           caption  = CASE WHEN caption = '' OR caption IS NULL THEN ? ELSE caption END
         WHERE id = (
           SELECT id FROM posts
-          WHERE user_id = ? AND account_id = ? AND video_id IS NULL AND status = 'processing'
+          WHERE user_id = ? AND account_id = ? AND video_id IS NULL AND status IN ('processing', 'inbox')
           ORDER BY ABS(created_at - ?) ASC
           LIMIT 1
         )
