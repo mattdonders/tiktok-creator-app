@@ -1675,7 +1675,7 @@
     }
 
     function updatePostStatus(id, status) {
-      const post = posts.find(p => p.id === id);
+      const post = posts.find(p => p.id === id || p.publish_id === id);
       if (post) {
         post.status = status;
         localStorage.setItem("cp_posts", JSON.stringify(posts));
