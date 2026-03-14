@@ -1800,7 +1800,7 @@ app.post('/api/v1/publish/photo', async (c) => {
   }));
 
   const post_info = {
-    title:           caption.slice(0, 2200),
+    description:     caption.slice(0, 4000),  // photo posts use description (max 4000), not title (max 90)
     privacy_level:   'PUBLIC_TO_EVERYONE',
     disable_comment: false,
     auto_add_music:  !music_id,
