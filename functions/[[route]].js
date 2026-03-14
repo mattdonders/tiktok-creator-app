@@ -1881,7 +1881,7 @@ async function runTikTokSync(c, user_id, account_id) {
   let cursor = 0, hasMore = true, imported = 0, skipped = 0;
   while (hasMore) {
     const res = await fetch(
-      'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url,embed_type',
+      'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url',
       {
         method:  'POST',
         headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
