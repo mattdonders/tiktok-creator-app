@@ -373,6 +373,7 @@
           const followers = data.follower_count != null ? ` · ${data.follower_count.toLocaleString()} followers` : '';
           statusEl.className   = 'status-msg success';
           statusEl.textContent = `Synced: ${data.imported} imported, ${data.skipped} already existed${followers}`;
+          localStorage.removeItem('cp_post_stats'); // bust stats cache so next load fetches fresh
         } else {
           statusEl.className   = 'status-msg error';
           statusEl.textContent = data.error ?? 'Sync failed';
