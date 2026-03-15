@@ -118,7 +118,8 @@ Syncs all published TikTok videos for an account into the CreatorPost database. 
   "ok": true,
   "imported": 1,
   "skipped": 42,
-  "follower_count": 1284
+  "follower_count": 1284,
+  "video_ids": ["7312345678901234567"]
 }
 ```
 
@@ -127,6 +128,7 @@ Syncs all published TikTok videos for an account into the CreatorPost database. 
 | `imported`       | New videos added to the database |
 | `skipped`        | Videos already in the database (not duplicated) |
 | `follower_count` | Current follower count for the account (`null` if `user.info.stats` scope not granted) |
+| `video_ids`      | Array of TikTok video IDs that were newly imported. Empty array if `imported: 0`. Use this to link a just-published video to stats without an extra `/stats` call. |
 
 **When to call:**
 - After a successful publish, wait ~60 seconds then call sync to import the new video
