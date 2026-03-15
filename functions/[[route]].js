@@ -1879,6 +1879,7 @@ async function runTikTokSync(c, user_id, account_id) {
 
   // Paginate through video list
   let cursor = 0, hasMore = true, imported = 0, skipped = 0;
+  const importedVideoIds = [];
   while (hasMore) {
     const res = await fetch(
       'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url',
@@ -1923,7 +1924,7 @@ async function runTikTokSync(c, user_id, account_id) {
         AND NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
       `).bind(videoId, caption, user_id, account_id, createAt, user_id, videoId).run();
 
-      if (updateResult.meta.changes > 0) { imported++; continue; }
+      if (updateResult.meta.changes > 0) { imported++; importedVideoIds.push(videoId); continue; }
 
       // No matching processing post — insert as new if not already present
       const insertResult = await c.env.DB.prepare(`
@@ -1932,14 +1933,14 @@ async function runTikTokSync(c, user_id, account_id) {
         WHERE NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
       `).bind(newId(), user_id, account_id, caption, videoId, createAt, user_id, videoId).run();
 
-      if (insertResult.meta.changes > 0) imported++;
+      if (insertResult.meta.changes > 0) { imported++; importedVideoIds.push(videoId); }
       else skipped++;
     }
 
     if (!hasMore || videos.length === 0) break;
   }
 
-  return { ok: true, imported, skipped, follower_count: followerCount };
+  return { ok: true, imported, skipped, follower_count: followerCount, video_ids: importedVideoIds };
 }
 
 // POST /api/tiktok/backfill-usernames — dev only (@mattdonders.com), fetches username for all connected TikTok accounts
