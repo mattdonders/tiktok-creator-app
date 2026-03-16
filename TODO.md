@@ -32,6 +32,8 @@
 - [ ] Collect feedback (Tally form or direct DM)
 - [ ] Fix top 2-3 reported issues
 - [ ] If TikTok Direct Post approved → update landing page, remove inbox caveats
+- [ ] **Record TikTok Direct Post demo video** (3rd submission) — script in `docs/tiktok-direct-post-demo-video.md`, nail Point 3a validation error
+- [ ] **Submit 3rd Direct Post application** with new demo video
 - [ ] Start Product Hunt prep (screenshots, tagline, hunter outreach)
 
 ---
@@ -105,3 +107,11 @@
 - [x] Onboarding UX (banner, empty states, button labels)
 - [x] Beta badge + landing page auto-redirect
 - [x] API Keys button + Upgrade button polish
+- [x] Photo carousel endpoint (`/api/v1/publish/photo`) — R2 proxy, description field, MEDIA_UPLOAD fallback
+- [x] Fix photo post `invalid_params` (title→description, strip auto_add_music from fallback)
+- [x] Fix sync: resolve inbox posts to published, dedupe records, log video/list errors
+- [x] Add `username` field to connected accounts + backfill endpoint
+- [x] Add `video_ids` to `/api/v1/sync` response
+- [x] Fix recheck button for inbox posts + `updatePostStatus` find by publish_id
+- [x] Posts & Analytics page (`/posts`) with infinite scroll, filters, aggregate stats
+- [x] Pipeline API reference doc (`docs/pipeline-api-reference.md`)
