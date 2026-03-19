@@ -1657,12 +1657,14 @@ app.post('/api/v1/publish', async (c) => {
   try { formData = await c.req.formData(); }
   catch { return c.json({ error: 'Invalid form data' }, 400); }
 
-  const videoFile   = formData.get('video');
-  const videoUrl    = formData.get('video_url') ?? null;
-  const caption     = (formData.get('caption') ?? '').slice(0, 2200);
-  const accountId   = formData.get('account_id') ?? null;
-  const accountName = formData.get('account') ?? null;
-  const platform    = formData.get('platform') ?? 'tiktok';
+  const videoFile          = formData.get('video');
+  const videoUrl           = formData.get('video_url') ?? null;
+  const caption            = (formData.get('caption') ?? '').slice(0, 2200);
+  const accountId          = formData.get('account_id') ?? null;
+  const accountName        = formData.get('account') ?? null;
+  const platform           = formData.get('platform') ?? 'tiktok';
+  const coverTimestampRaw  = formData.get('video_cover_timestamp_ms');
+  const coverTimestampMs   = coverTimestampRaw !== null ? parseInt(coverTimestampRaw, 10) : null;
 
   if (!videoFile && !videoUrl) return c.json({ error: 'Provide video file or video_url' }, 400);
 
@@ -1684,7 +1686,7 @@ app.post('/api/v1/publish', async (c) => {
   const postInfo = {
     title: caption, privacy_level: 'PUBLIC_TO_EVERYONE',
     disable_duet: false, disable_comment: false, disable_stitch: false,
-    video_cover_timestamp_ms: 1000,
+    video_cover_timestamp_ms: (coverTimestampMs !== null && !isNaN(coverTimestampMs)) ? coverTimestampMs : 1000,
   };
 
   // Try FILE_UPLOAD first (TikTok processes faster than PULL_FROM_URL).
