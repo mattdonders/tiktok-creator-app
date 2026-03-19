@@ -1704,7 +1704,7 @@ app.post('/api/v1/publish', async (c) => {
 
   // FILE_UPLOAD init failed — fall back to PULL_FROM_URL via R2
   if (hasFile && sourceInfo.source === 'FILE_UPLOAD' && (!initRes.ok || initData.error?.code !== 'ok')) {
-    log(c, { type: 'event', event: 'api_publish_file_upload_fallback', tiktok_error: initData.error?.code, user_id: session.user_id });
+    log(c, { type: 'event', event: 'api_publish_file_upload_fallback', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id });
     const r2Key  = `api-uploads/${newId()}/${videoFile.name || 'video.mp4'}`;
     await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
       httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
