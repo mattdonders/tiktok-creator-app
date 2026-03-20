@@ -153,7 +153,7 @@
     let cursor            = null;
     let loading           = false;
     let hasMore           = true;
-    let activeFilters     = { platform: null, account_id: null };
+    let activeFilters     = { platform: null, account_id: null, group: null };
     let allRenderedPostIds = [];
     let postsById         = {};
     let statsMap          = {};
@@ -191,8 +191,26 @@
 
     function renderAccountFilter(accounts) {
       const sel = document.getElementById('account-filter');
-      // sort: TikTok → YouTube → Instagram, then alphabetically within
       const order = { tiktok: 0, youtube: 1, instagram: 2 };
+
+      // Groups section
+      const groups = [...new Set(accounts.map(a => a.group_name).filter(Boolean))].sort();
+      if (groups.length) {
+        const grpLabel = document.createElement('optgroup');
+        grpLabel.label = 'Groups';
+        for (const g of groups) {
+          const count = accounts.filter(a => a.group_name === g).length;
+          const opt = document.createElement('option');
+          opt.value = `group:${g}`;
+          opt.textContent = `${g} (${count} accounts)`;
+          grpLabel.appendChild(opt);
+        }
+        sel.appendChild(grpLabel);
+      }
+
+      // Individual accounts section
+      const acctLabel = document.createElement('optgroup');
+      acctLabel.label = 'Accounts';
       const sorted = [...accounts].sort((a, b) => {
         const pd = (order[a.platform] ?? 9) - (order[b.platform] ?? 9);
         if (pd !== 0) return pd;
@@ -203,9 +221,23 @@
         opt.value = a.id;
         const prefix = PLATFORM_PREFIX[a.platform] ?? a.platform.toUpperCase();
         opt.textContent = `[${prefix}] ${a.display_name ?? a.platform}`;
-        sel.appendChild(opt);
+        acctLabel.appendChild(opt);
       }
-      sel.addEventListener('change', () => setFilter('account_id', sel.value || null));
+      sel.appendChild(acctLabel);
+
+      sel.addEventListener('change', () => {
+        const val = sel.value;
+        if (!val) {
+          setFilter('account_id', null);
+          setFilter('group', null);
+        } else if (val.startsWith('group:')) {
+          setFilter('group', val.slice(6));
+          setFilter('account_id', null);
+        } else {
+          setFilter('account_id', val);
+          setFilter('group', null);
+        }
+      });
     }
 
     // ── Aggregate strip ───────────────────────────────────────────────────────
@@ -245,6 +277,7 @@
       if (cursor)                   params.set('cursor', cursor);
       if (activeFilters.platform)   params.set('platform', activeFilters.platform);
       if (activeFilters.account_id) params.set('account_id', activeFilters.account_id);
+      if (activeFilters.group)      params.set('group', activeFilters.group);
 
       try {
         const res   = await fetch(`/api/posts?${params}`);
@@ -391,6 +424,7 @@
       const aggParams = new URLSearchParams();
       if (activeFilters.platform)   aggParams.set('platform', activeFilters.platform);
       if (activeFilters.account_id) aggParams.set('account_id', activeFilters.account_id);
+      if (activeFilters.group)      aggParams.set('group', activeFilters.group);
       fetch(`/api/posts/aggregate?${aggParams}`)
         .then(r => r.json())
         .then(renderAggregate)

@@ -131,6 +131,25 @@
     }
     .disconnect-btn:hover { color: #f87171; border-color: rgba(248,113,113,0.5); }
 
+    .group-input {
+      font-size: 0.75rem;
+      font-family: inherit;
+      color: var(--muted);
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 0.25rem 0.5rem;
+      width: 90px;
+      flex-shrink: 0;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .group-input:hover, .group-input:focus {
+      border-color: var(--border);
+      background: var(--surface);
+      outline: none;
+    }
+    .group-input::placeholder { color: rgba(255,255,255,0.2); }
+
     .status-msg {
       font-size: 0.85rem;
       padding: 0.6rem 0.9rem;
@@ -346,6 +365,7 @@
         const avatarHtml = avatar
           ? `<img src="${escHtml(avatar)}" alt="${name}" onerror="this.style.display='none'" />`
           : initial;
+        const groupVal = escHtml(acc.group_name ?? '');
         return `
           <div class="acct-row">
             <div class="acct-avatar">${avatarHtml}</div>
@@ -353,6 +373,9 @@
               <div class="acct-name">${name}</div>
               ${handle ? `<div class="acct-handle">${handle}</div>` : ''}
             </div>
+            <input type="text" class="group-input" data-id="${id}" value="${groupVal}" placeholder="Group…"
+              title="Group name — shared accounts (e.g. 'History') are grouped together in Posts & Analytics"
+              onblur="saveGroupName('${id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()" />
             <span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:4px;padding:0.2rem 0.5rem;flex-shrink:0">${platLabel}</span>
             ${isDev && platform === 'tiktok' ? `<button class="disconnect-btn" id="sync-btn-${id}" onclick="syncPosts('${id}')">Sync Posts</button>` : ''}
             <button class="disconnect-btn" onclick="disconnect('${id}', '${name}')">Disconnect</button>
@@ -421,6 +444,14 @@
       statusEl.textContent = `Sync All done: ${totalImported} imported, ${totalSkipped} already existed across ${tiktokAccounts.length} accounts`;
       allBtn.textContent = 'Sync All';
       allBtn.disabled = false;
+    }
+
+    async function saveGroupName(accountId, groupName) {
+      await fetch(`/api/accounts/${accountId}/group`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ group_name: groupName.trim() }),
+      });
     }
 
     async function disconnect(accountId, accountName) {

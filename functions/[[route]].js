@@ -813,10 +813,23 @@ app.get('/api/me', async (c) => {
     .bind(session.user_id).first();
 
   const accounts = await c.env.DB.prepare(
-    'SELECT id, platform, platform_user_id, display_name, avatar_url, username, token_expires_at FROM connected_accounts WHERE user_id = ?'
+    'SELECT id, platform, platform_user_id, display_name, avatar_url, username, group_name, token_expires_at FROM connected_accounts WHERE user_id = ?'
   ).bind(session.user_id).all();
 
   return c.json({ user, accounts: accounts.results });
+});
+
+// ── API — account group name ──────────────────────────────────────────────────
+
+app.post('/api/accounts/:id/group', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'not_authenticated' }, 401);
+  const account_id = c.req.param('id');
+  const { group_name } = await c.req.json();
+  await c.env.DB.prepare(
+    'UPDATE connected_accounts SET group_name = ? WHERE id = ? AND user_id = ?'
+  ).bind(group_name || null, account_id, session.user_id).run();
+  return c.json({ ok: true });
 });
 
 // ── API — profile ─────────────────────────────────────────────────────────────
@@ -1139,6 +1152,7 @@ app.get('/api/posts', async (c) => {
   const cursor     = c.req.query('cursor');
   const platform   = c.req.query('platform');
   const account_id = c.req.query('account_id');
+  const group      = c.req.query('group');
   const limit      = Math.min(parseInt(c.req.query('limit') ?? '50'), 100);
 
   const conditions = ['p.user_id = ?'];
@@ -1146,6 +1160,7 @@ app.get('/api/posts', async (c) => {
 
   if (platform)   { conditions.push('p.platform = ?');   params.push(platform); }
   if (account_id) { conditions.push('p.account_id = ?'); params.push(account_id); }
+  if (group)      { conditions.push('a.group_name = ?'); params.push(group); }
   if (cursor)     { conditions.push('p.created_at < ?'); params.push(parseInt(cursor)); }
 
   params.push(limit);
@@ -1168,17 +1183,20 @@ app.get('/api/posts/aggregate', async (c) => {
 
   const platform   = c.req.query('platform');
   const account_id = c.req.query('account_id');
+  const group      = c.req.query('group');
 
-  const conditions = ['user_id = ?'];
+  const conditions = ['p.user_id = ?'];
   const params     = [session.user_id];
-  if (platform)   { conditions.push('platform = ?');   params.push(platform); }
-  if (account_id) { conditions.push('account_id = ?'); params.push(account_id); }
+  if (platform)   { conditions.push('p.platform = ?');   params.push(platform); }
+  if (account_id) { conditions.push('p.account_id = ?'); params.push(account_id); }
+  if (group)      { conditions.push('a.group_name = ?'); params.push(group); }
 
   const { results } = await c.env.DB.prepare(`
-    SELECT platform, status, COUNT(*) as count
-    FROM posts
+    SELECT p.platform, p.status, COUNT(*) as count
+    FROM posts p
+    JOIN connected_accounts a ON p.account_id = a.id
     WHERE ${conditions.join(' AND ')}
-    GROUP BY platform, status
+    GROUP BY p.platform, p.status
   `).bind(...params).all();
 
   const by_platform = {};
@@ -1186,8 +1204,8 @@ app.get('/api/posts/aggregate', async (c) => {
   let total = 0;
 
   for (const row of results) {
-    by_platform[row.platform] = (by_platform[row.platform] ?? 0) + row.count;
-    by_status[row.status]     = (by_status[row.status]     ?? 0) + row.count;
+    by_platform[row.platform ?? 'unknown'] = (by_platform[row.platform ?? 'unknown'] ?? 0) + row.count;
+    by_status[row.status     ?? 'unknown'] = (by_status[row.status     ?? 'unknown'] ?? 0) + row.count;
     total += row.count;
   }
 
