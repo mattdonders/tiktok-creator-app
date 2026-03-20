@@ -187,12 +187,22 @@
     }
 
     // ── Account filter dropdown ───────────────────────────────────────────────
+    const PLATFORM_PREFIX = { tiktok: 'TT', youtube: 'YT', instagram: 'IG' };
+
     function renderAccountFilter(accounts) {
       const sel = document.getElementById('account-filter');
-      for (const a of accounts) {
+      // sort: TikTok → YouTube → Instagram, then alphabetically within
+      const order = { tiktok: 0, youtube: 1, instagram: 2 };
+      const sorted = [...accounts].sort((a, b) => {
+        const pd = (order[a.platform] ?? 9) - (order[b.platform] ?? 9);
+        if (pd !== 0) return pd;
+        return (a.display_name ?? '').localeCompare(b.display_name ?? '');
+      });
+      for (const a of sorted) {
         const opt = document.createElement('option');
         opt.value = a.id;
-        opt.textContent = a.display_name ?? PLATFORM_LABEL[a.platform] ?? a.platform;
+        const prefix = PLATFORM_PREFIX[a.platform] ?? a.platform.toUpperCase();
+        opt.textContent = `[${prefix}] ${a.display_name ?? a.platform}`;
         sel.appendChild(opt);
       }
       sel.addEventListener('change', () => setFilter('account_id', sel.value || null));
