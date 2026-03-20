@@ -204,7 +204,8 @@
     <div class="profile-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.75rem">
         <div class="card-section-title" style="margin-bottom:0">Connected accounts</div>
-        <div style="display:flex;gap:0.5rem">
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <button id="sync-all-btn" onclick="syncAllPosts()" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;display:none">Sync All</button>
           <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem"
             title="TikTok connects whichever account is active in the TikTok app. Switch accounts in TikTok first if needed.">+ TikTok</a>
           <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
@@ -308,6 +309,7 @@
       user     = data.user     ?? {};
       accounts = data.accounts ?? [];
       isDev    = !!user.email?.endsWith('@mattdonders.com');
+      if (isDev) document.getElementById('sync-all-btn').style.display = '';
 
       document.getElementById('field-email').textContent    = user.email ?? '—';
       document.getElementById('field-display-name').value   = user.display_name ?? '';
@@ -383,6 +385,42 @@
       } finally {
         if (btn) { btn.textContent = 'Sync Posts'; btn.disabled = false; }
       }
+    }
+
+    async function syncAllPosts() {
+      const tiktokAccounts = accounts.filter(a => a.platform === 'tiktok');
+      if (!tiktokAccounts.length) return;
+      const allBtn = document.getElementById('sync-all-btn');
+      allBtn.textContent = `Syncing 0 / ${tiktokAccounts.length}…`;
+      allBtn.disabled = true;
+      const statusEl = document.getElementById('status-msg');
+      let totalImported = 0, totalSkipped = 0, done = 0;
+      for (const acct of tiktokAccounts) {
+        allBtn.textContent = `Syncing ${done + 1} / ${tiktokAccounts.length}…`;
+        const btn = document.getElementById(`sync-btn-${acct.id}`);
+        if (btn) { btn.textContent = 'Syncing…'; btn.disabled = true; }
+        try {
+          const res  = await fetch('/api/tiktok/sync-posts', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ account_id: acct.id }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            totalImported += data.imported ?? 0;
+            totalSkipped  += data.skipped  ?? 0;
+          }
+        } catch (e) { /* continue */ }
+        finally {
+          if (btn) { btn.textContent = 'Sync Posts'; btn.disabled = false; }
+          done++;
+        }
+      }
+      localStorage.removeItem('cp_post_stats');
+      statusEl.className   = 'status-msg success';
+      statusEl.textContent = `Sync All done: ${totalImported} imported, ${totalSkipped} already existed across ${tiktokAccounts.length} accounts`;
+      allBtn.textContent = 'Sync All';
+      allBtn.disabled = false;
     }
 
     async function disconnect(accountId, accountName) {
