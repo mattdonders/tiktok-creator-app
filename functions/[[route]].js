@@ -1609,6 +1609,36 @@ app.get('/api/v1/accounts', async (c) => {
   return c.json(results);
 });
 
+app.get('/api/v1/posts/:post_id', async (c) => {
+  const session = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const post_id = c.req.param('post_id');
+
+  const row = await c.env.DB.prepare(`
+    SELECT p.id as post_id, p.video_id, p.caption, p.status, p.platform,
+           p.account_id, p.created_at, p.publish_id,
+           a.display_name as account
+    FROM posts p
+    JOIN connected_accounts a ON p.account_id = a.id
+    WHERE p.id = ? AND p.user_id = ?
+  `).bind(post_id, session.user_id).first();
+
+  if (!row) return c.json({ error: 'not_found' }, 404);
+
+  return c.json({
+    post_id:      row.post_id,
+    video_id:     row.video_id ?? null,
+    caption:      row.caption  ?? null,
+    status:       row.status,
+    platform:     row.platform,
+    account_id:   row.account_id,
+    account:      row.account,
+    publish_time: row.created_at ? new Date(row.created_at * 1000).toISOString() : null,
+    publish_id:   row.publish_id ?? null,
+  });
+});
+
 app.get('/api/v1/stats', async (c) => {
   const session = await getApiKeySession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
