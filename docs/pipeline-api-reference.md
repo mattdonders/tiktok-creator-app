@@ -136,6 +136,40 @@ Syncs all published TikTok videos for an account into the CreatorPost database. 
 
 ---
 
+### `GET /api/v1/posts/{post_id}`
+
+Look up a single post by its CreatorPost UUID. Returns the current state including `video_id` (TikTok's numeric ID) once resolved. Use this to map `post_id → video_id` after publish.
+
+**Response:**
+```json
+{
+  "post_id":      "uuid",
+  "video_id":     "7617528876855528734",
+  "caption":      "Your caption here",
+  "status":       "published",
+  "platform":     "tiktok",
+  "account_id":   "uuid",
+  "account":      "Get Daily History Facts",
+  "publish_time": "2026-03-20T14:00:00.000Z",
+  "publish_id":   "v_pub_..."
+}
+```
+
+| Field          | Description |
+|---------------|-------------|
+| `post_id`      | Internal CreatorPost UUID (same as what `/api/v1/publish` returned) |
+| `video_id`     | TikTok's numeric video ID — `null` until resolved via sync |
+| `status`       | `processing`, `inbox`, `published`, `failed`, or `scheduled` |
+| `publish_time` | ISO 8601 timestamp of when the post record was created |
+| `publish_id`   | TikTok's publish job ID (used to poll TikTok's own status endpoint) |
+
+**Notes:**
+- Returns `404` if `post_id` not found or belongs to a different user
+- `video_id` is `null` for inbox/processing posts until `/api/v1/sync` resolves them
+- Polling pattern: after publish, poll this endpoint until `video_id != null`, then call `/api/v1/stats`
+
+---
+
 ### `GET /api/v1/stats`
 
 Returns live per-video stats for the last 100 published TikTok posts. Stats are fetched **in real-time from TikTok on every call** — no server-side cache, no sync schedule.
