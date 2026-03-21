@@ -1617,7 +1617,7 @@ app.get('/api/v1/posts/:post_id', async (c) => {
 
   const row = await c.env.DB.prepare(`
     SELECT p.id as post_id, p.video_id, p.caption, p.status, p.platform,
-           p.account_id, p.created_at, p.publish_id,
+           p.account_id, p.created_at, p.publish_id, p.tiktok_create_time,
            a.display_name as account
     FROM posts p
     JOIN connected_accounts a ON p.account_id = a.id
@@ -1627,15 +1627,16 @@ app.get('/api/v1/posts/:post_id', async (c) => {
   if (!row) return c.json({ error: 'not_found' }, 404);
 
   return c.json({
-    post_id:      row.post_id,
-    video_id:     row.video_id ?? null,
-    caption:      row.caption  ?? null,
-    status:       row.status,
-    platform:     row.platform,
-    account_id:   row.account_id,
-    account:      row.account,
-    publish_time: row.created_at ? new Date(row.created_at * 1000).toISOString() : null,
-    publish_id:   row.publish_id ?? null,
+    post_id:             row.post_id,
+    video_id:            row.video_id ?? null,
+    caption:             row.caption  ?? null,
+    status:              row.status,
+    platform:            row.platform,
+    account_id:          row.account_id,
+    account:             row.account,
+    submitted_at:        row.created_at          ? new Date(row.created_at          * 1000).toISOString() : null,
+    tiktok_publish_time: row.tiktok_create_time  ? new Date(row.tiktok_create_time  * 1000).toISOString() : null,
+    publish_id:          row.publish_id ?? null,
   });
 });
 
@@ -1962,9 +1963,10 @@ async function runTikTokSync(c, user_id, account_id) {
       // Preserve existing caption if non-empty; only fill in if blank.
       const updateResult = await c.env.DB.prepare(`
         UPDATE posts SET
-          video_id = ?,
-          status   = 'published',
-          caption  = CASE WHEN caption = '' OR caption IS NULL THEN ? ELSE caption END
+          video_id          = ?,
+          status            = 'published',
+          tiktok_create_time = ?,
+          caption           = CASE WHEN caption = '' OR caption IS NULL THEN ? ELSE caption END
         WHERE id = (
           SELECT id FROM posts
           WHERE user_id = ? AND account_id = ? AND video_id IS NULL AND status IN ('processing', 'inbox')
@@ -1972,16 +1974,16 @@ async function runTikTokSync(c, user_id, account_id) {
           LIMIT 1
         )
         AND NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
-      `).bind(videoId, caption, user_id, account_id, createAt, user_id, videoId).run();
+      `).bind(videoId, createAt, caption, user_id, account_id, createAt, user_id, videoId).run();
 
       if (updateResult.meta.changes > 0) { imported++; importedVideoIds.push(videoId); continue; }
 
       // No matching processing post — insert as new if not already present
       const insertResult = await c.env.DB.prepare(`
-        INSERT INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at)
-        SELECT ?, ?, ?, 'tiktok', ?, 'published', ?, ?
+        INSERT INTO posts (id, user_id, account_id, platform, caption, status, video_id, created_at, tiktok_create_time)
+        SELECT ?, ?, ?, 'tiktok', ?, 'published', ?, ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
-      `).bind(newId(), user_id, account_id, caption, videoId, createAt, user_id, videoId).run();
+      `).bind(newId(), user_id, account_id, caption, videoId, createAt, createAt, user_id, videoId).run();
 
       if (insertResult.meta.changes > 0) { imported++; importedVideoIds.push(videoId); }
       else skipped++;

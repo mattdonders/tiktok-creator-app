@@ -44,9 +44,10 @@ CREATE TABLE IF NOT EXISTS posts (
   caption      TEXT,
   status       TEXT    NOT NULL DEFAULT 'processing',  -- processing | scheduled | published | failed
   publish_id   TEXT,
-  scheduled_at INTEGER,
-  created_at   INTEGER NOT NULL,
-  video_id     TEXT
+  scheduled_at       INTEGER,
+  created_at         INTEGER NOT NULL,
+  video_id           TEXT,
+  tiktok_create_time INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS api_keys (
