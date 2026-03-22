@@ -1609,6 +1609,74 @@ app.get('/api/v1/accounts', async (c) => {
   return c.json(results);
 });
 
+app.post('/api/v1/backfill-publish-times', async (c) => {
+  const session = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const body       = await c.req.json().catch(() => ({}));
+  const account_id = body.account_id ?? null;
+
+  // Find all posts needing backfill for this user (optionally scoped to one account)
+  const conditions = ['p.user_id = ?', 'p.video_id IS NOT NULL', 'p.tiktok_create_time IS NULL', 'p.platform = ?'];
+  const params     = [session.user_id, 'tiktok'];
+  if (account_id) { conditions.push('p.account_id = ?'); params.push(account_id); }
+
+  const { results: posts } = await c.env.DB.prepare(`
+    SELECT p.id, p.video_id, p.account_id, a.access_token
+    FROM posts p
+    JOIN connected_accounts a ON p.account_id = a.id
+    WHERE ${conditions.join(' AND ')}
+  `).bind(...params).all();
+
+  const checked         = posts.length;
+  let updated           = 0;
+  let still_unresolved  = 0;
+
+  // Group by account so we use the right access token per batch
+  const byAccount = {};
+  for (const p of posts) {
+    if (!byAccount[p.account_id]) byAccount[p.account_id] = { token: p.access_token, rows: [] };
+    byAccount[p.account_id].rows.push(p);
+  }
+
+  for (const { token, rows } of Object.values(byAccount)) {
+    const videoIds = rows.map(r => r.video_id);
+    const createTimeMap = {}; // video_id → create_time
+
+    for (let i = 0; i < videoIds.length; i += 20) {
+      const batch = videoIds.slice(i, i + 20);
+      const res   = await fetch('https://open.tiktokapis.com/v2/video/query/?fields=id,create_time', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+        body:    JSON.stringify({ filters: { video_ids: batch } }),
+      });
+      const data = await res.json();
+      for (const v of data.data?.videos ?? []) {
+        if (v.id && v.create_time) createTimeMap[v.id] = v.create_time;
+      }
+    }
+
+    for (const row of rows) {
+      const ts = createTimeMap[row.video_id];
+      if (ts) {
+        await c.env.DB.prepare('UPDATE posts SET tiktok_create_time = ? WHERE id = ?')
+          .bind(ts, row.id).run();
+        updated++;
+      } else {
+        still_unresolved++;
+      }
+    }
+  }
+
+  return c.json({
+    ok:               true,
+    account_id:       account_id ?? 'all',
+    checked,
+    updated,
+    still_unresolved,
+  });
+});
+
 app.get('/api/v1/posts/:post_id', async (c) => {
   const session = await getApiKeySession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
