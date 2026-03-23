@@ -1766,6 +1766,49 @@ app.get('/api/v1/stats', async (c) => {
   return c.json(posts);
 });
 
+// GET /api/v1/publish/status — poll TikTok publish status (pipeline API key auth)
+// Returns: { status, fail_reason?, video_id? }
+// status values: PROCESSING_DOWNLOAD | SEND_TO_USER_INBOX | PUBLISH_COMPLETE | DOWNLOAD_COMPLETE | FAILED
+app.get('/api/v1/publish/status', async (c) => {
+  const session    = await getApiKeySession(c);
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const publish_id = c.req.query('publish_id');
+  const account_id = c.req.query('account_id');
+  if (!publish_id) return c.json({ error: 'publish_id required' }, 400);
+  if (!account_id) return c.json({ error: 'account_id required' }, 400);
+
+  const account = await c.env.DB.prepare(
+    'SELECT access_token FROM connected_accounts WHERE id = ? AND user_id = ? AND platform = ?'
+  ).bind(account_id, session.user_id, 'tiktok').first();
+  if (!account) return c.json({ error: 'Account not found' }, 404);
+
+  const res  = await fetch(TIKTOK_STATUS_URL, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+    body:    JSON.stringify({ publish_id }),
+  });
+  const data = await res.json();
+
+  const status     = data.data?.status;
+  const fail_reason = data.data?.fail_reason ?? null;
+  // Note: TikTok typo'd "publicaly" — intentional
+  const videoId    = data.data?.publicaly_available_post_id?.[0] ?? null;
+
+  if (status === 'PUBLISH_COMPLETE' || status === 'DOWNLOAD_COMPLETE') {
+    await c.env.DB.prepare('UPDATE posts SET status = ?, video_id = ? WHERE publish_id = ?')
+      .bind('published', videoId, publish_id).run();
+  } else if (status === 'SEND_TO_USER_INBOX') {
+    await c.env.DB.prepare('UPDATE posts SET status = ? WHERE publish_id = ?')
+      .bind('inbox', publish_id).run();
+  } else if (status === 'FAILED') {
+    await c.env.DB.prepare('UPDATE posts SET status = ? WHERE publish_id = ?')
+      .bind('failed', publish_id).run();
+  }
+
+  return c.json({ status, fail_reason, video_id: videoId });
+});
+
 app.post('/api/v1/publish', async (c) => {
   const session = await getApiKeySession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
