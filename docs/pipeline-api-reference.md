@@ -99,6 +99,36 @@ Publish a photo carousel to TikTok. Images are fetched by TikTok directly from t
 - If `music_id` is omitted, `auto_add_music: true` is sent so TikTok picks trending audio
 - No inbox fallback for photo posts — requires Direct Post approval (same as video)
 - Rate limits: same as video, no limits enforced on our side
+- **Image format: use JPEG only.** TikTok's docs claim PNG/WEBP are supported but in practice the API rejects PNGs with `file_format_check_failed`. Always convert to JPEG before uploading to B2.
+- **Poll for status after publishing** — TikTok processes images async. A 200 response does not mean the post succeeded. Use `GET /api/v1/publish/status` to confirm (see below).
+
+---
+
+### `GET /api/v1/publish/status`
+
+Poll TikTok's publish status for a post. **Call this after every publish** — TikTok processes images async and can fail after returning a valid `publish_id`. Updates the post record in the DB automatically.
+
+**Query params:** `publish_id`, `account_id`
+
+**Example:**
+```
+GET /api/v1/publish/status?publish_id=p_inbox_url~v2.xxx&account_id=<uuid>
+Authorization: Bearer cp_...
+```
+
+**Response:**
+```json
+{ "status": "PUBLISH_COMPLETE", "fail_reason": null, "video_id": "7123456789012345678" }
+```
+
+| `status` | Meaning |
+|---|---|
+| `PROCESSING_DOWNLOAD` | TikTok still working — keep polling |
+| `SEND_TO_USER_INBOX` | Went to TikTok drafts (Direct Post not yet approved) |
+| `PUBLISH_COMPLETE` / `DOWNLOAD_COMPLETE` | Live on TikTok — `video_id` is set |
+| `FAILED` | Rejected — check `fail_reason` |
+
+**Suggested polling strategy:** poll every 3–5 seconds for up to 60 seconds. If still `PROCESSING_DOWNLOAD` after that, log it and move on — the next `/api/v1/sync` call will resolve it.
 
 ---
 

@@ -1945,6 +1945,8 @@ app.post('/api/v1/publish/photo', async (c) => {
 
   // Proxy any images not hosted on creatorpost.app through R2
   // (TikTok requires domain verification for PULL_FROM_URL — creatorpost.app is already verified)
+  // NOTE: TikTok photo carousels only reliably accept JPEG. PNG is documented as supported
+  // but the API returns file_format_check_failed in practice. Pipeline should send JPEGs.
   const finalImages = await Promise.all(images.map(async (url) => {
     try {
       if (new URL(url).hostname.endsWith('creatorpost.app')) return url;
