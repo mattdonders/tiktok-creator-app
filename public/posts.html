@@ -361,7 +361,21 @@
         let freshStats;
 
         if (cached && (Date.now() - cached.ts) < STATS_CACHE_TTL) {
-          freshStats = cached.data;
+          // Cache is fresh — but infinite scroll may have added IDs not yet in cache
+          const uncachedIds = tiktokIds.filter(id => !(id in cached.data));
+          if (uncachedIds.length) {
+            const res = await fetch(`/api/posts/stats?ids=${uncachedIds.join(',')}`);
+            if (res.ok) {
+              const newStats = await res.json();
+              freshStats = { ...cached.data, ...newStats };
+              // Preserve original ts so TTL window doesn't reset on every scroll
+              localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({ ts: cached.ts, data: freshStats }));
+            } else {
+              freshStats = cached.data;
+            }
+          } else {
+            freshStats = cached.data;
+          }
         } else {
           const ids = tiktokIds.join(',');
           const res = await fetch(`/api/posts/stats?ids=${ids}`);
