@@ -2074,6 +2074,10 @@ async function runTikTokSync(c, user_id, account_id) {
       // First, try to claim an existing processing post for this account that has no video_id yet
       // (e.g. a photo post or video that was published via our API but never had its video_id resolved)
       // Preserve existing caption if non-empty; only fill in if blank.
+      // Caption match is used as a tiebreaker: for inbox posts, created_at (submission time) and
+      // tiktok_create_time (publication time) can differ by hours, so when multiple processing posts
+      // exist for the same account, pure timestamp ordering can claim the wrong one. Prefer the post
+      // whose caption matches the TikTok video description; fall back to closest timestamp.
       const updateResult = await c.env.DB.prepare(`
         UPDATE posts SET
           video_id          = ?,
@@ -2083,11 +2087,13 @@ async function runTikTokSync(c, user_id, account_id) {
         WHERE id = (
           SELECT id FROM posts
           WHERE user_id = ? AND account_id = ? AND video_id IS NULL AND status IN ('processing', 'inbox')
-          ORDER BY ABS(created_at - ?) ASC
+          ORDER BY
+            CASE WHEN SUBSTR(caption, 1, 150) = SUBSTR(?, 1, 150) THEN 0 ELSE 1 END ASC,
+            ABS(created_at - ?) ASC
           LIMIT 1
         )
         AND NOT EXISTS (SELECT 1 FROM posts WHERE user_id = ? AND video_id = ?)
-      `).bind(videoId, createAt, caption, user_id, account_id, createAt, user_id, videoId).run();
+      `).bind(videoId, createAt, caption, user_id, account_id, caption, createAt, user_id, videoId).run();
 
       if (updateResult.meta.changes > 0) { imported++; importedVideoIds.push(videoId); continue; }
 
@@ -2103,6 +2109,52 @@ async function runTikTokSync(c, user_id, account_id) {
     }
 
     if (!hasMore || videos.length === 0) break;
+  }
+
+  // Reconciliation pass: resolve stuck processing/inbox posts that the main loop missed because
+  // the INSERT path fired first (creating a published row with no publish_id) before the correct
+  // processing post could be claimed. Match by caption (first 150 chars) then delete the orphaned
+  // sync-inserted row to avoid duplicates in stats.
+  const stuckPosts = await c.env.DB.prepare(`
+    SELECT id, caption FROM posts
+    WHERE user_id = ? AND account_id = ? AND video_id IS NULL
+      AND status IN ('processing', 'inbox')
+      AND created_at < (strftime('%s','now') - 7200)
+  `).bind(user_id, account_id).all();
+
+  for (const stuck of stuckPosts.results ?? []) {
+    if (!stuck.caption) continue;
+
+    // Try caption match first against sync-inserted rows (publish_id IS NULL)
+    let match = await c.env.DB.prepare(`
+      SELECT id, video_id, tiktok_create_time FROM posts
+      WHERE user_id = ? AND account_id = ? AND video_id IS NOT NULL
+        AND status = 'published' AND publish_id IS NULL
+        AND SUBSTR(caption, 1, 150) = SUBSTR(?, 1, 150)
+      LIMIT 1
+    `).bind(user_id, account_id, stuck.caption).first();
+
+    // Fallback: timestamp window match — inbox post published within 24h of submission
+    if (!match) {
+      match = await c.env.DB.prepare(`
+        SELECT id, video_id, tiktok_create_time FROM posts
+        WHERE user_id = ? AND account_id = ? AND video_id IS NOT NULL
+          AND status = 'published' AND publish_id IS NULL
+          AND tiktok_create_time > ? AND tiktok_create_time < (? + 86400)
+        ORDER BY ABS(tiktok_create_time - ?) ASC
+        LIMIT 1
+      `).bind(user_id, account_id, stuck.created_at, stuck.created_at, stuck.created_at).first();
+    }
+
+    if (match) {
+      await c.env.DB.prepare(
+        `UPDATE posts SET video_id = ?, status = 'published', tiktok_create_time = ? WHERE id = ?`
+      ).bind(match.video_id, match.tiktok_create_time, stuck.id).run();
+      // Remove the orphaned sync-inserted row now that the original post owns the video_id
+      await c.env.DB.prepare(`DELETE FROM posts WHERE id = ?`).bind(match.id).run();
+      imported++;
+      importedVideoIds.push(match.video_id);
+    }
   }
 
   return { ok: true, imported, skipped, follower_count: followerCount, video_ids: importedVideoIds };
