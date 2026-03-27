@@ -2115,12 +2115,13 @@ async function runTikTokSync(c, user_id, account_id) {
   // the INSERT path fired first (creating a published row with no publish_id) before the correct
   // processing post could be claimed. Match by caption (first 150 chars) then delete the orphaned
   // sync-inserted row to avoid duplicates in stats.
+  const twoHoursAgo = now() - 7200;
   const stuckPosts = await c.env.DB.prepare(`
-    SELECT id, caption FROM posts
+    SELECT id, caption, created_at FROM posts
     WHERE user_id = ? AND account_id = ? AND video_id IS NULL
       AND status IN ('processing', 'inbox')
-      AND created_at < (strftime('%s','now') - 7200)
-  `).bind(user_id, account_id).all();
+      AND created_at < ?
+  `).bind(user_id, account_id, twoHoursAgo).all();
 
   for (const stuck of stuckPosts.results ?? []) {
     if (!stuck.caption) continue;
