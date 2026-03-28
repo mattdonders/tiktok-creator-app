@@ -87,11 +87,11 @@ async function withRetry(fn, { retryable, onRetry } = {}) {
   throw lastErr;
 }
 
-async function sendDiscordAlert(c, { platform, event, account_name, post_id, error_code, attempts }) {
+async function sendDiscordAlert(c, { platform, event, account_name, post_id, error_code, attempts, color, title }) {
   if (!c.env.DISCORD_WEBHOOK_URL) return;
   const embed = {
-    title:  `\uD83D\uDEA8 ${platform} publish exhausted retries`,
-    color:  0xff4444,
+    title:  title ?? `\uD83D\uDEA8 ${platform} publish exhausted retries`,
+    color:  color ?? 0xff4444,
     fields: [
       { name: 'Event',      value: event,                    inline: true },
       { name: 'Attempts',   value: String(attempts),          inline: true },
@@ -106,6 +106,69 @@ async function sendDiscordAlert(c, { platform, event, account_name, post_id, err
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ embeds: [embed] }),
   }).catch(() => {});
+}
+
+// Reads platform rate limit info from a Response, logs to Axiom, fires a yellow Discord alert
+// on 429 / quotaExceeded, and returns a warning object if limits are approaching.
+// Entirely best-effort — wrapped in try/catch, never throws, never blocks a publish.
+function captureRateLimits(c, res, { platform, endpoint, account_id, user_id, account_name }) {
+  try {
+    if (platform === 'tiktok') {
+      const limit     = res.headers.get('x-ratelimit-limit');
+      const remaining = res.headers.get('x-ratelimit-remaining');
+      const reset     = res.headers.get('x-ratelimit-reset');
+
+      if (limit !== null || remaining !== null) {
+        log(c, {
+          type: 'event', event: 'rate_limit_check', platform, endpoint,
+          ratelimit_limit:     limit     !== null ? Number(limit)     : null,
+          ratelimit_remaining: remaining !== null ? Number(remaining) : null,
+          ratelimit_reset:     reset,
+          account_id, user_id,
+        });
+      }
+
+      if (res.status === 429) {
+        c.executionCtx.waitUntil(sendDiscordAlert(c, {
+          platform: 'TikTok', event: 'rate_limit_hit',
+          account_name, error_code: 'rate_limit_exceeded', attempts: 1,
+          color: 0xffcc00, title: '\u26A0\uFE0F TikTok Rate Limit Hit',
+        }));
+      }
+
+      const rem = Number(remaining);
+      if (remaining !== null && !isNaN(rem) && rem < 10) {
+        return { platform: 'tiktok', remaining: rem, resets_at: reset };
+      }
+
+    } else if (platform === 'instagram') {
+      const raw = res.headers.get('x-app-usage');
+      if (raw) {
+        let usage = {};
+        try { usage = JSON.parse(raw); } catch {}
+
+        log(c, {
+          type: 'event', event: 'rate_limit_check', platform, endpoint,
+          app_usage: usage, account_id, user_id,
+        });
+
+        if (res.status === 429) {
+          c.executionCtx.waitUntil(sendDiscordAlert(c, {
+            platform: 'Instagram', event: 'rate_limit_hit',
+            account_name, error_code: '429', attempts: 1,
+            color: 0xffcc00, title: '\u26A0\uFE0F Instagram Rate Limit Hit',
+          }));
+        }
+
+        const maxPct = Math.max(usage.call_count ?? 0, usage.total_cputime ?? 0, usage.total_time ?? 0);
+        if (maxPct > 80) {
+          return { platform: 'instagram', call_count_pct: usage.call_count, total_time_pct: usage.total_time };
+        }
+      }
+    }
+  } catch { /* best-effort — never let rate limit tracking break a publish */ }
+
+  return null;
 }
 
 // TikTok error codes that will never succeed on retry
@@ -123,22 +186,29 @@ function isIgRetryable(err) { return !IG_PERMANENT_CODES.has(err.code); }
 // 401 is retryable — token is refreshed via onRetry before the next attempt. 403 is permanent.
 function isYouTubeRetryable(err) { return err.status !== 403; }
 
-// Typed wrapper around TikTok init endpoints — throws on non-ok response
-async function tiktokInitFetch(url, token, body) {
+// Typed wrapper around TikTok init endpoints — throws on non-ok response.
+// Pass ctx = { c, account_id, user_id, account_name } to capture rate limit headers.
+// Returns { data, rl } where rl is a rate-limit warning object or null.
+async function tiktokInitFetch(url, token, body, ctx = null) {
   const res  = await fetch(url, {
     method:  'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
     body:    JSON.stringify(body),
   });
   const data = await res.json();
+  const rl   = ctx ? captureRateLimits(ctx.c, res, {
+    platform: 'tiktok', endpoint: url,
+    account_id: ctx.account_id, user_id: ctx.user_id, account_name: ctx.account_name,
+  }) : null;
   if (!res.ok || data.error?.code !== 'ok') {
     const err = new Error(data.error?.message ?? 'TikTok init failed');
     err.code  = data.error?.code ?? 'unknown';
     err.http  = res.status;
     err.raw   = data;
+    err.rl    = rl;
     throw err;
   }
-  return data;
+  return { data, rl };
 }
 
 async function getApiKeySession(c) {
@@ -537,8 +607,10 @@ app.post('/api/youtube/upload-session', async (c) => {
         }
       );
       if (!initRes.ok) {
-        const err = new Error(`YouTube init failed: ${initRes.status}`);
-        err.status = initRes.status;
+        const errBody = await initRes.json().catch(() => null);
+        const err     = new Error(`YouTube init failed: ${initRes.status}`);
+        err.status    = initRes.status;
+        err.reason    = errBody?.error?.errors?.[0]?.reason ?? null;
         throw err;
       }
       return initRes.headers.get('Location');
@@ -557,7 +629,16 @@ app.post('/api/youtube/upload-session', async (c) => {
       },
     });
   } catch (err) {
-    log(c, { type: 'error', event: 'youtube_upload_failed', reason: 'init_failed', status: err.status, attempts: ytAttempts, user_id: session.user_id });
+    const isQuota = err.status === 403 && err.reason === 'quotaExceeded';
+    if (isQuota) {
+      log(c, { type: 'event', event: 'rate_limit_hit', platform: 'youtube', error: 'quotaExceeded', account_id, user_id: session.user_id });
+      c.executionCtx.waitUntil(sendDiscordAlert(c, {
+        platform: 'YouTube', event: 'quota_exceeded',
+        account_name: account.display_name, error_code: 'quotaExceeded', attempts: ytAttempts,
+        color: 0xffcc00, title: '\u26A0\uFE0F YouTube Quota Exceeded',
+      }));
+    }
+    log(c, { type: 'error', event: 'youtube_upload_failed', reason: isQuota ? 'quota_exceeded' : 'init_failed', status: err.status, attempts: ytAttempts, user_id: session.user_id });
     // Save a failed post record so the user sees it in the dashboard
     const failedId = newId();
     c.executionCtx.waitUntil(
@@ -566,7 +647,7 @@ app.post('/api/youtube/upload-session', async (c) => {
         VALUES (?, ?, ?, 'youtube', ?, 'failed', ?, ?, ?)
       `).bind(failedId, session.user_id, account_id, title, now(), ytAttempts - 1, err.message ?? 'YouTube init failed').run()
     );
-    c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'YouTube', event: 'upload_init_failed', account_name: account.display_name, post_id: failedId, error_code: String(err.status), attempts: ytAttempts }));
+    if (!isQuota) c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'YouTube', event: 'upload_init_failed', account_name: account.display_name, post_id: failedId, error_code: String(err.status), attempts: ytAttempts }));
     if (err.status === 401) return c.json({ error: 'token_revoked' }, 401);
     return c.json({ error: 'Failed to initialize YouTube upload' }, 500);
   }
@@ -663,7 +744,7 @@ app.post('/api/instagram/upload', async (c) => {
   // Upload to R2 then create Reels container — up to 3 total attempts
   // NOTE: video_url is the only supported method for Instagram Login tokens.
   // Must use form-encoded body (not JSON) — confirmed from working reference implementation.
-  let igAttempts = 0, finalR2Key = null;
+  let igAttempts = 0, finalR2Key = null, rlWarning = null;
   let containerId;
   try {
     const result = await withRetry(async (attempt) => {
@@ -682,6 +763,7 @@ app.post('/api/instagram/upload', async (c) => {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: initParams.toString(),
       });
       const initData = await initRes.json();
+      const rl = captureRateLimits(c, initRes, { platform: 'instagram', endpoint: `/${igUserId}/media`, account_id: accountId, user_id: session.user_id, account_name: account.display_name });
       if (!initRes.ok || initData.error) {
         c.executionCtx.waitUntil(c.env.MEDIA_BUCKET.delete(r2Key));
         const err = new Error(initData.error?.message ?? 'Instagram container init failed');
@@ -689,10 +771,11 @@ app.post('/api/instagram/upload', async (c) => {
         err.http  = initRes.status;
         throw err;
       }
-      return { containerId: initData.id, r2Key };
+      return { containerId: initData.id, r2Key, rl };
     }, { retryable: isIgRetryable });
     containerId = result.containerId;
     finalR2Key  = result.r2Key;
+    rlWarning   = result.rl;
   } catch (err) {
     log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_failed', message: err.message, code: err.code, ig_user_id: igUserId, attempts: igAttempts, user_id: session.user_id });
     c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'Instagram', event: 'upload_init_failed', account_name: account.display_name, error_code: String(err.code), attempts: igAttempts }));
@@ -707,7 +790,8 @@ app.post('/api/instagram/upload', async (c) => {
   `).bind(postId, session.user_id, accountId, caption, containerId, now(), igAttempts - 1).run();
 
   log(c, { type: 'event', event: 'instagram_upload_initiated', user_id: session.user_id, account_id: accountId, post_id: postId, container_id: containerId });
-  return c.json({ container_id: containerId, post_id: postId, r2_key: finalR2Key });
+  return c.json({ container_id: containerId, post_id: postId, r2_key: finalR2Key,
+    ...(rlWarning ? { rate_limit_warning: rlWarning } : {}) });
 });
 
 app.get('/api/instagram/status', async (c) => {
@@ -743,24 +827,27 @@ app.post('/api/instagram/publish', async (c) => {
 
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
-  let igPublishAttempts = 0;
+  let igPublishAttempts = 0, igRlWarning = null;
   let mediaId;
   try {
-    mediaId = await withRetry(async (attempt) => {
+    const igResult = await withRetry(async (attempt) => {
       igPublishAttempts = attempt;
       const publishParams = new URLSearchParams({ creation_id: container_id, access_token: account.access_token });
       const res  = await fetch(`${IG_GRAPH}/${account.platform_user_id}/media_publish`, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: publishParams.toString(),
       });
       const data = await res.json();
+      const rl = captureRateLimits(c, res, { platform: 'instagram', endpoint: '/media_publish', account_id, user_id: session.user_id, account_name: account.display_name });
       if (!res.ok || data.error) {
         const err = new Error(data.error?.message ?? 'Instagram media_publish failed');
         err.code  = data.error?.code;
         err.http  = res.status;
         throw err;
       }
-      return data.id;
+      return { mediaId: data.id, rl };
     }, { retryable: isIgRetryable });
+    mediaId     = igResult.mediaId;
+    igRlWarning = igResult.rl;
   } catch (err) {
     log(c, { type: 'error', event: 'instagram_publish_failed', message: err.message, code: err.code, attempts: igPublishAttempts, user_id: session.user_id, account_id });
     // Fix: update post to 'failed' so it shows in dashboard
@@ -785,7 +872,8 @@ app.post('/api/instagram/publish', async (c) => {
   }
 
   log(c, { type: 'event', event: 'instagram_published', user_id: session.user_id, account_id, media_id: mediaId, post_id: post_id ?? null });
-  return c.json({ ok: true, media_id: mediaId, post_id });
+  return c.json({ ok: true, media_id: mediaId, post_id,
+    ...(igRlWarning ? { rate_limit_warning: igRlWarning } : {}) });
 });
 
 // ── TikTok OAuth ──────────────────────────────────────────────────────────────
@@ -1034,25 +1122,27 @@ app.post('/api/publish', async (c) => {
   }
 
   // Try direct post, fall back to inbox — up to 3 total attempts
+  const tikCtx = { c, account_id: accountId, user_id: session.user_id, account_name: account.display_name };
   let usedInbox = false, initAttempts = 0;
-  let publish_id, upload_url;
+  let publish_id, upload_url, rlWarning;
   try {
     const initResult = await withRetry(async (attempt) => {
       initAttempts = attempt;
       try {
-        const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token,
-          { post_info: postInfo, source_info: sourceInfo });
-        return { data, inbox: false };
+        const result = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token,
+          { post_info: postInfo, source_info: sourceInfo }, tikCtx);
+        return { data: result.data, inbox: false, rl: result.rl };
       } catch {
         // Direct post failed — fall back to inbox on this attempt
-        const data = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token,
-          { source_info: sourceInfo });
-        return { data, inbox: true };
+        const result = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token,
+          { source_info: sourceInfo }, tikCtx);
+        return { data: result.data, inbox: true, rl: result.rl };
       }
     }, { retryable: isTiktokRetryable });
     usedInbox  = initResult.inbox;
     publish_id = initResult.data.data.publish_id;
     upload_url = initResult.data.data.upload_url;
+    rlWarning  = initResult.rl;
   } catch (err) {
     const isTokenError = err.http === 401 || ['access_token_invalid', 'access_token_expired'].includes(err.code);
     log(c, { type: 'error', event: 'publish_failed', reason: isTokenError ? 'token_revoked' : 'tiktok_init_failed', tiktok_error: err.code, tiktok_message: err.message, attempts: initAttempts, user_id: session.user_id, account_id: accountId });
@@ -1100,7 +1190,8 @@ app.post('/api/publish', async (c) => {
     initAttempts - 1,
   ).run();
 
-  return c.json({ publish_id, post_id: postId, scheduled: !!scheduleTime, inbox: usedInbox });
+  return c.json({ publish_id, post_id: postId, scheduled: !!scheduleTime, inbox: usedInbox,
+    ...(rlWarning ? { rate_limit_warning: rlWarning } : {}) });
 });
 
 app.get('/api/publish', async (c) => {
@@ -1123,6 +1214,7 @@ app.get('/api/publish', async (c) => {
     body: JSON.stringify({ publish_id }),
   });
   const data = await res.json();
+  captureRateLimits(c, res, { platform: 'tiktok', endpoint: TIKTOK_STATUS_URL, account_id: accountId, user_id: session.user_id, account_name: null });
 
   // Update post status in DB if complete/failed
   const status  = data.data?.status;
@@ -1911,6 +2003,7 @@ app.get('/api/v1/publish/status', async (c) => {
     body:    JSON.stringify({ publish_id }),
   });
   const data = await res.json();
+  captureRateLimits(c, res, { platform: 'tiktok', endpoint: TIKTOK_STATUS_URL, account_id, user_id: session.user_id, account_name: null });
 
   const status     = data.data?.status;
   const fail_reason = data.data?.fail_reason ?? null;
@@ -1972,17 +2065,18 @@ app.post('/api/v1/publish', async (c) => {
   };
 
   // Try FILE_UPLOAD → PULL_FROM_URL via R2 → inbox, up to 3 total attempts per step
+  const tikCtx = { c, account_id: account.id, user_id: session.user_id, account_name: account.display_name };
   let usedInbox = false, initAttempts = 0, finalSourceInfo = null;
-  let publish_id, upload_url;
+  let publish_id, upload_url, rlWarning;
   try {
     const initResult = await withRetry(async (attempt) => {
       initAttempts = attempt;
       if (hasFile) {
         // Step 1: Try FILE_UPLOAD direct
         try {
-          const si   = { source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1 };
-          const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si });
-          return { data, inbox: false, sourceInfo: si };
+          const si     = { source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1 };
+          const result = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si }, tikCtx);
+          return { data: result.data, inbox: false, sourceInfo: si, rl: result.rl };
         } catch (fileErr) {
           // FILE_UPLOAD init failed — upload to R2 and retry via PULL_FROM_URL
           log(c, { type: 'event', event: 'api_publish_file_upload_fallback', tiktok_error: fileErr.code, user_id: session.user_id });
@@ -1993,23 +2087,23 @@ app.post('/api/v1/publish', async (c) => {
           });
           const si = { source: 'PULL_FROM_URL', video_url: `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}` };
           try {
-            const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si });
-            return { data, inbox: false, sourceInfo: si };
+            const result = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si }, tikCtx);
+            return { data: result.data, inbox: false, sourceInfo: si, rl: result.rl };
           } catch {
             // R2/direct also failed — fall back to inbox
-            const data = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token, { source_info: si });
-            return { data, inbox: true, sourceInfo: si };
+            const result = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token, { source_info: si }, tikCtx);
+            return { data: result.data, inbox: true, sourceInfo: si, rl: result.rl };
           }
         }
       } else {
         // URL-only: try direct, then inbox
         const si = { source: 'PULL_FROM_URL', video_url: videoUrl };
         try {
-          const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si });
-          return { data, inbox: false, sourceInfo: si };
+          const result = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si }, tikCtx);
+          return { data: result.data, inbox: false, sourceInfo: si, rl: result.rl };
         } catch {
-          const data = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token, { source_info: si });
-          return { data, inbox: true, sourceInfo: si };
+          const result = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token, { source_info: si }, tikCtx);
+          return { data: result.data, inbox: true, sourceInfo: si, rl: result.rl };
         }
       }
     }, { retryable: isTiktokRetryable });
@@ -2017,6 +2111,7 @@ app.post('/api/v1/publish', async (c) => {
     publish_id      = initResult.data.data.publish_id;
     upload_url      = initResult.data.data.upload_url;
     finalSourceInfo = initResult.sourceInfo;
+    rlWarning       = initResult.rl;
   } catch (err) {
     const tiktokCode = err.code;
     log(c, { type: 'error', event: 'api_publish_failed', platform, tiktok_error: tiktokCode, tiktok_message: err.message, attempts: initAttempts, user_id: session.user_id });
@@ -2058,7 +2153,8 @@ app.post('/api/v1/publish', async (c) => {
 
   log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox, source: finalSourceInfo.source });
 
-  return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: finalSourceInfo.source });
+  return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: finalSourceInfo.source,
+    ...(rlWarning ? { rate_limit_warning: rlWarning } : {}) });
 });
 
 // POST /api/v1/publish/photo — publish a photo carousel to TikTok
@@ -2089,8 +2185,9 @@ app.post('/api/v1/publish/photo', async (c) => {
   // Proxy images + init carousel — up to 3 total attempts
   // NOTE: TikTok photo carousels only reliably accept JPEG. PNG returns file_format_check_failed.
   // (TikTok requires domain verification for PULL_FROM_URL — creatorpost.app is already verified)
+  const tikCtx = { c, account_id: account.id, user_id: session.user_id, account_name: account.display_name };
   let usedInbox = false, photoAttempts = 0;
-  let publish_id;
+  let publish_id, rlWarning;
   try {
     const initResult = await withRetry(async (attempt) => {
       photoAttempts = attempt;
@@ -2115,20 +2212,21 @@ app.post('/api/v1/publish/photo', async (c) => {
 
       // Try DIRECT_POST first — falls back to MEDIA_UPLOAD (inbox) if not approved yet
       try {
-        const data = await tiktokInitFetch(TIKTOK_PHOTO_INIT_URL, account.access_token,
-          { post_info, source_info, media_type: 'PHOTO', post_mode: 'DIRECT_POST' });
-        return { data, inbox: false };
+        const result = await tiktokInitFetch(TIKTOK_PHOTO_INIT_URL, account.access_token,
+          { post_info, source_info, media_type: 'PHOTO', post_mode: 'DIRECT_POST' }, tikCtx);
+        return { data: result.data, inbox: false, rl: result.rl };
       } catch (directErr) {
         log(c, { type: 'event', event: 'api_publish_photo_direct_post_failed', tiktok_error: directErr.code, tiktok_message: directErr.message, user_id: session.user_id });
         // auto_add_music is DIRECT_POST only — strip it for MEDIA_UPLOAD fallback
         const { auto_add_music: _, ...post_info_inbox } = post_info;
-        const data = await tiktokInitFetch(TIKTOK_PHOTO_INIT_URL, account.access_token,
-          { post_info: post_info_inbox, source_info, media_type: 'PHOTO', post_mode: 'MEDIA_UPLOAD' });
-        return { data, inbox: true };
+        const result = await tiktokInitFetch(TIKTOK_PHOTO_INIT_URL, account.access_token,
+          { post_info: post_info_inbox, source_info, media_type: 'PHOTO', post_mode: 'MEDIA_UPLOAD' }, tikCtx);
+        return { data: result.data, inbox: true, rl: result.rl };
       }
     }, { retryable: isTiktokRetryable });
     usedInbox  = initResult.inbox;
     publish_id = initResult.data.data.publish_id;
+    rlWarning  = initResult.rl;
   } catch (err) {
     log(c, { type: 'error', event: 'api_publish_photo_failed', tiktok_error: err.code, tiktok_message: err.message, attempts: photoAttempts, user_id: session.user_id });
     c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'TikTok', event: 'api_publish_photo_failed', account_name: account.display_name, error_code: err.code, attempts: photoAttempts }));
@@ -2143,7 +2241,8 @@ app.post('/api/v1/publish/photo', async (c) => {
 
   log(c, { type: 'event', event: 'api_publish_photo', account_id: account.id, user_id: session.user_id, image_count: images.length, inbox: usedInbox });
 
-  return c.json({ ok: true, publish_id, post_id: postId, inbox: usedInbox });
+  return c.json({ ok: true, publish_id, post_id: postId, inbox: usedInbox,
+    ...(rlWarning ? { rate_limit_warning: rlWarning } : {}) });
 });
 
 // ── API — TikTok sync (dev only) ──────────────────────────────────────────────
