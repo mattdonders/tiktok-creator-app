@@ -54,6 +54,7 @@
       padding: 1.5rem;
       overflow: hidden;
       min-width: 0;
+      box-shadow: var(--card-shadow);
     }
     .card-title {
       font-size: 0.95rem;
@@ -321,35 +322,37 @@
 
     .post-item {
       display: flex;
-      align-items: flex-start;
-      gap: 0.75rem;
-      padding: 0.75rem 0;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.5rem 0;
       border-bottom: 1px solid var(--border);
     }
     .post-item:last-child { border-bottom: none; }
     .post-thumb {
-      width: 40px;
-      height: 40px;
-      border-radius: 6px;
-      background: var(--border);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent-light);
       flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.1rem;
+      font-size: 0.68rem;
+      font-weight: 700;
     }
-    .post-meta { flex: 1; min-width: 0; }
+    .post-meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.5rem; }
     .post-caption {
+      flex: 1;
+      min-width: 0;
       font-size: 0.875rem;
       font-weight: 500;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .post-time { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
-    .post-account { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
-    .post-stats { display:flex; gap:0.75rem; font-size:0.75rem; color:var(--muted); margin-top:0.25rem; }
+    .post-row-account { font-size: 0.72rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+    .post-row-views { font-size: 0.72rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; min-width: 52px; text-align: right; }
     .post-status {
       font-size: 0.75rem;
       padding: 0.2rem 0.5rem;
@@ -1742,27 +1745,29 @@
         return;
       }
 
-      container.innerHTML = posts.slice(0, 10).map(p => `
+      container.innerHTML = posts.slice(0, 5).map(p => {
+        const raw = (p.caption || '').replace(/#\S+/g, '').trim();
+        const short = raw.length > 52 ? raw.slice(0, 50) + '\u2026' : raw || '(no caption)';
+        const avatar = (p.account || '?')[0].toUpperCase();
+        const captionHtml = p.video_id && p.platform === 'tiktok'
+          ? `<a href="https://www.tiktok.com/@${escHtml(p.account)}/video/${escHtml(p.video_id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${escHtml(short)}</a>`
+          : escHtml(short);
+        const statusLabel = {published:'published',processing:'processing',failed:'failed',scheduled:'scheduled',inbox:'in drafts'}[p.status] ?? p.status;
+        return `
         <div class="post-item" data-post-id="${escHtml(p.id)}">
-          <div class="post-thumb">🎬</div>
+          <div class="post-thumb">${avatar}</div>
           <div class="post-meta">
-            <div class="post-caption">${p.video_id && p.platform === 'tiktok'
-              ? `<a href="https://www.tiktok.com/@${escHtml(p.account)}/video/${escHtml(p.video_id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${escHtml(p.caption)}</a>`
-              : escHtml(p.caption)}</div>
-            <div class="post-time">${formatTime(p.time)}</div>
-            ${p.account || p.platform ? `<div class="post-account" style="display:flex;align-items:center;gap:0.4rem">
-              ${p.account ? escHtml(p.account) : ''}
-              ${p.platform ? `<span style="font-size:0.65rem;font-weight:600;color:${PLATFORM_COLOR[p.platform]??'#888'};background:${PLATFORM_BG[p.platform]??'rgba(255,255,255,0.08)'};border-radius:3px;padding:0.1rem 0.35rem">${escHtml(PLATFORM_LABEL[p.platform]??p.platform)}</span>` : ''}
-            </div>` : ""}
-            ${p.status === 'published' && p.platform === 'tiktok' ? `<div id="post-stats-${escHtml(p.id)}" class="post-stats"></div>` : ''}
+            <div class="post-caption">${captionHtml}</div>
+            ${p.account ? `<div class="post-row-account">${escHtml(p.account)}</div>` : ''}
           </div>
-          <div style="display:flex;align-items:center;gap:0.5rem">
-            <div class="post-status ${escHtml(p.status)}">${{published:'published',processing:'processing',failed:'failed',scheduled:'scheduled',inbox:'in drafts'}[p.status] ?? p.status}</div>
-            ${(p.status === 'processing' || p.status === 'inbox') && p.publish_id && p.account_id && p.platform === 'tiktok' ? `<button onclick="recheckStatus('${escHtml(p.publish_id)}','${escHtml(p.account_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Recheck status">↻</button>` : ''}
-            ${isDev && p.status === 'published' && p.platform === 'tiktok' && p.video_id ? `<button onclick="refreshCaption('${escHtml(p.id)}','${escHtml(p.video_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px" title="Re-fetch caption">↺</button>` : ''}
-            <button onclick="deletePost('${escHtml(p.id)}')" style="background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--muted);padding:0.1rem 0.25rem;border-radius:4px;line-height:1" title="Remove">✕</button>
+          <div class="post-status ${escHtml(p.status)}">${statusLabel}</div>
+          <div class="post-row-views" id="post-views-${escHtml(p.id)}"></div>
+          <div style="display:flex;align-items:center;gap:0.15rem;flex-shrink:0">
+            ${(p.status === 'processing' || p.status === 'inbox') && p.publish_id && p.account_id && p.platform === 'tiktok' ? `<button onclick="recheckStatus('${escHtml(p.publish_id)}','${escHtml(p.account_id)}',this)" style="background:none;border:none;cursor:pointer;font-size:0.85rem;color:var(--muted);padding:0.1rem 0.2rem;border-radius:4px" title="Recheck status">↻</button>` : ''}
+            <button onclick="deletePost('${escHtml(p.id)}')" style="background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--muted);padding:0.1rem 0.2rem;border-radius:4px;line-height:1" title="Remove">✕</button>
           </div>
-        </div>`).join("");
+        </div>`;
+      }).join("");
 
       updateStats();
     }
@@ -1860,13 +1865,10 @@
           localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: stats }));
         }
         for (const [postId, s] of Object.entries(stats)) {
-          const el = document.getElementById(`post-stats-${postId}`);
-          if (!el) continue;
-          el.innerHTML = `
-            <span>👁 ${fmtNum(s.views)}</span>
-            <span>❤️ ${fmtNum(s.likes)}</span>
-            <span>💬 ${fmtNum(s.comments)}</span>
-            <span>↗ ${fmtNum(s.shares)}</span>`;
+          const viewsEl = document.getElementById(`post-views-${postId}`);
+          if (viewsEl && s.views != null) {
+            viewsEl.textContent = fmtNum(s.views) + ' views';
+          }
         }
       } catch { /* stats are non-critical */ }
     }
