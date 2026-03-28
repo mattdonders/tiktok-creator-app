@@ -104,7 +104,8 @@
     }
     .drop-zone:hover, .drop-zone.dragover {
       border-color: var(--accent);
-      background: rgba(124,58,237,0.04);
+      background: rgba(124,58,237,0.05);
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.08);
     }
     .drop-zone input[type="file"] {
       position: absolute;
@@ -114,7 +115,8 @@
       width: 100%;
       height: 100%;
     }
-    .drop-zone-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .drop-zone-icon { font-size: 2.5rem; margin-bottom: 0.6rem; transition: transform 0.2s; }
+    .drop-zone:hover .drop-zone-icon, .drop-zone.dragover .drop-zone-icon { transform: scale(1.1); }
     .drop-zone p { color: var(--muted); font-size: 0.875rem; margin: 0; }
     .drop-zone .file-name {
       margin-top: 0.5rem;
@@ -750,15 +752,24 @@
       <div class="card" style="padding:1rem 1.5rem">
         <div class="stats-strip">
           <div class="stat-item">
-            <div class="stat-num" id="stat-total">—</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:0.4rem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <div class="stat-num" id="stat-total">—</div>
+            </div>
             <div class="stat-label">Total Posts</div>
           </div>
           <div class="stat-item">
-            <div class="stat-num" id="stat-scheduled">—</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:0.4rem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <div class="stat-num" id="stat-scheduled">—</div>
+            </div>
             <div class="stat-label">Scheduled</div>
           </div>
           <div class="stat-item">
-            <div class="stat-num" id="stat-this-week">—</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:0.4rem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="stat-week-icon" style="flex-shrink:0"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              <div class="stat-num" id="stat-this-week">—</div>
+            </div>
             <div class="stat-label">Published This Week</div>
           </div>
         </div>
@@ -766,7 +777,10 @@
 
       <!-- ── Recent posts ── -->
       <div class="card">
-        <div class="card-title"><span class="icon">📋</span> Recent Posts</div>
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span><span class="icon">📋</span> Recent Posts</span>
+          <a href="/posts" style="font-size:0.78rem;color:var(--muted);font-weight:500;text-decoration:none;transition:color 0.15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">View all →</a>
+        </div>
         <div id="posts-list">
           <div class="empty-state">
             <div class="empty-icon">📭</div>
@@ -922,26 +936,55 @@
         updateSubmitBtn();
         return;
       }
-      container.innerHTML = accounts.map(acc => {
-        const platform  = acc.platform ?? 'tiktok';
-        const name      = escHtml(acc.display_name ?? PLATFORM_LABEL[platform] ?? 'Account');
-        const id        = escHtml(acc.id ?? '');
-        const platLabel = escHtml(PLATFORM_LABEL[platform] ?? platform);
+
+      const platformOrder = ['tiktok', 'youtube', 'instagram'];
+      const grouped = {};
+      for (const acc of accounts) {
+        const p = acc.platform ?? 'tiktok';
+        if (!grouped[p]) grouped[p] = [];
+        grouped[p].push(acc);
+      }
+
+      let html = '';
+      for (const platform of platformOrder) {
+        const accts = grouped[platform];
+        if (!accts?.length) continue;
+        const platLabel = PLATFORM_LABEL[platform] ?? platform;
         const platColor = PLATFORM_COLOR[platform] ?? '#888';
-        const platBg    = PLATFORM_BG[platform]    ?? 'rgba(255,255,255,0.08)';
-        const expiresSoon = acc.token_expires_at && acc.token_expires_at < Math.floor(Date.now()/1000);
-        const expiryBadge = expiresSoon
-          ? `<span title="Token expired — reconnect this account" style="font-size:0.68rem;background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:4px;padding:0.15rem 0.4rem;flex-shrink:0;cursor:default">⚠ Reconnect</span>`
-          : '';
-        return `
+        html += `
+          <div class="platform-group-header">
+            <span class="platform-group-label" style="color:${platColor}">${escHtml(platLabel)}</span>
+            <button type="button" onclick="selectPlatformAccounts('${platform}')"
+              style="font-size:0.68rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:0;transition:color 0.15s"
+              onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">Select all</button>
+          </div>`;
+        for (const acc of accts) {
+          const name = escHtml(acc.display_name ?? platLabel ?? 'Account');
+          const id   = escHtml(acc.id ?? '');
+          const expiresSoon = acc.token_expires_at && acc.token_expires_at < Math.floor(Date.now()/1000);
+          const expiryBadge = expiresSoon
+            ? `<span title="Token expired — reconnect this account" style="font-size:0.68rem;background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:4px;padding:0.15rem 0.4rem;flex-shrink:0;cursor:default">⚠ Reconnect</span>`
+            : '';
+          html += `
           <label class="account-check-row" id="row-${id}">
-            <input type="checkbox" class="acct-cb" value="${id}" onchange="onCheckboxChange(this)" />
+            <input type="checkbox" class="acct-cb" value="${id}" data-platform="${platform}" onchange="onCheckboxChange(this)" />
             <span class="account-check-name">${name}</span>
-            <span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:4px;padding:0.2rem 0.5rem;flex-shrink:0">${platLabel}</span>
             ${expiryBadge}
           </label>`;
-      }).join('');
+        }
+      }
+      container.innerHTML = html;
       updateSubmitBtn();
+    }
+
+    function selectPlatformAccounts(platform) {
+      document.querySelectorAll(`.acct-cb[data-platform="${platform}"]`).forEach(cb => {
+        cb.checked = true;
+        cb.closest('.account-check-row')?.classList.add('selected');
+      });
+      updateSubmitBtn();
+      updatePlatformPanels();
+      renderBestTimes();
     }
 
     function onCheckboxChange(cb) {
@@ -1723,13 +1766,15 @@
     }
 
     function updateStats() {
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      document.getElementById("stat-total").textContent =
-        posts.length;
-      document.getElementById("stat-scheduled").textContent =
-        posts.filter(p => p.status === "scheduled").length;
-      document.getElementById("stat-this-week").textContent =
-        posts.filter(p => new Date(p.time) > weekAgo && p.status === "published").length;
+      const weekAgo  = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const thisWeek = posts.filter(p => new Date(p.time) > weekAgo && p.status === "published").length;
+      document.getElementById("stat-total").textContent    = posts.length;
+      document.getElementById("stat-scheduled").textContent = posts.filter(p => p.status === "scheduled").length;
+      const weekEl = document.getElementById("stat-this-week");
+      weekEl.textContent = thisWeek;
+      weekEl.style.color = thisWeek > 0 ? '#4ade80' : '';
+      const weekIcon = document.getElementById("stat-week-icon");
+      if (weekIcon) weekIcon.setAttribute('stroke', thisWeek > 0 ? '#4ade80' : 'var(--muted)');
     }
 
     // ─────────────────────────────────────────────────────────────────────────

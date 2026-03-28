@@ -1,4 +1,6 @@
 /* CreatorPost — shared styles */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -11,6 +13,13 @@
   --accent-light: #8b5cf6;
   --accent-hover: #6d28d9;
   --radius: 8px;
+  /* Platform accent colors */
+  --color-tiktok: #ccc;
+  --bg-tiktok: rgba(255,255,255,0.08);
+  --color-youtube: #ff6b6b;
+  --bg-youtube: rgba(255,107,107,0.15);
+  --color-instagram: #e1306c;
+  --bg-instagram: rgba(225,48,108,0.15);
 }
 
 html { font-size: 16px; scroll-behavior: smooth; }
@@ -18,7 +27,7 @@ html { font-size: 16px; scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   line-height: 1.6;
   min-height: 100vh;
 }
@@ -491,4 +500,40 @@ footer .logo { font-size: 0.95rem; }
   nav ul { display: none; }
   .hero { padding: 4rem 1.25rem 3rem; }
   footer { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Shared status badges (used across dashboard + posts pages) ── */
+.post-status {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.post-status.published  { background: rgba(74,222,128,0.15);  color: #4ade80; }
+.post-status.scheduled  { background: rgba(124,58,237,0.15);  color: var(--accent-light); }
+.post-status.processing { background: rgba(251,191,36,0.15);  color: #fbbf24; animation: status-pulse 2s ease-in-out infinite; }
+.post-status.failed     { background: rgba(248,113,113,0.15); color: #f87171; }
+.post-status.inbox      { background: rgba(96,165,250,0.15);  color: #60a5fa; }
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+/* ── Platform group header (used in account checkboxes + account list) ── */
+.platform-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0.65rem 0 0.3rem;
+  padding: 0 0.25rem;
+}
+.platform-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }

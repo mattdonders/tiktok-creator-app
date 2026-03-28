@@ -24,7 +24,10 @@
       transition: all 0.15s;
     }
     .platform-pill:hover { color: var(--text); border-color: var(--muted); }
-    .platform-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .platform-pill.active         { background: var(--accent);    color: #fff;    border-color: var(--accent); }
+    .platform-pill.active[data-platform="tiktok"]    { background: rgba(255,255,255,0.12); color: #ededed; border-color: rgba(255,255,255,0.25); }
+    .platform-pill.active[data-platform="youtube"]   { background: rgba(255,107,107,0.18); color: #ff6b6b; border-color: rgba(255,107,107,0.4); }
+    .platform-pill.active[data-platform="instagram"] { background: rgba(225,48,108,0.18);  color: #e1306c; border-color: rgba(225,48,108,0.4); }
 
     /* ── Posts table ── */
     .posts-table { width: 100%; border-collapse: collapse; }
@@ -107,7 +110,7 @@
     <!-- Filter bar -->
     <div class="filter-bar">
       <button class="platform-pill active" data-platform="">All</button>
-      <button class="platform-pill" data-platform="tiktok">TikTok</button>
+      <button class="platform-pill" data-platform="tiktok" style="--pill-active-color:#ededed">TikTok</button>
       <button class="platform-pill" data-platform="youtube">YouTube</button>
       <button class="platform-pill" data-platform="instagram">Instagram</button>
       <select id="account-filter" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.3rem 0.65rem;color:var(--muted);font-size:0.75rem;font-weight:600;font-family:inherit;letter-spacing:-0.01em;cursor:pointer">
@@ -138,7 +141,11 @@
     </div>
 
     <div id="load-more-sentinel" style="height:1px;margin-top:1px"></div>
-    <div id="empty-state" class="empty-state" style="display:none">No posts found.</div>
+    <div id="empty-state" class="empty-state" style="display:none">
+      <div style="font-size:1.75rem;margin-bottom:0.75rem">📭</div>
+      <div style="font-size:0.95rem;font-weight:600;color:var(--text);margin-bottom:0.4rem">No posts yet</div>
+      <div style="font-size:0.875rem">Head to the <a href="/dashboard" style="color:var(--accent-light)">Dashboard</a> to publish your first video.</div>
+    </div>
   </div>
 
   <script>
@@ -325,18 +332,21 @@
         const platColor = PLATFORM_COLOR[p.platform] ?? '#888';
         const platBg    = PLATFORM_BG[p.platform]    ?? 'rgba(255,255,255,0.08)';
         const platBadge = `<span style="font-size:0.7rem;font-weight:600;color:${platColor};background:${platBg};border-radius:3px;padding:0.1rem 0.35rem">${escHtml(platLabel)}</span>`;
+        const platDot   = `<span style="width:6px;height:6px;border-radius:50%;background:${platColor};flex-shrink:0;display:inline-block;margin-right:0.35rem;opacity:0.8"></span>`;
 
         const statusText = { published: 'published', processing: 'processing', failed: 'failed', scheduled: 'scheduled', inbox: 'in drafts' }[p.status] ?? p.status;
         const hasStats   = !!(p.video_id && p.platform === 'tiktok');
-        const dash       = '—';
+        const isRecentPublish = p.status === 'published' && p.created_at != null && (Date.now() / 1000 - Number(p.created_at)) < 86400;
+        const dash       = p.status === 'inbox' ? '<span style="color:rgba(255,255,255,0.2);font-size:0.7rem">N/A</span>' : '—';
+        const syncPlaceholder = isRecentPublish && hasStats ? '<span style="color:var(--muted);font-size:0.72rem">syncing…</span>' : (hasStats ? '…' : dash);
 
         tr.innerHTML = `
           <td class="caption-cell">${captionHtml}</td>
           <td>${platBadge}</td>
-          <td style="font-size:0.8rem;color:var(--muted);white-space:nowrap">${escHtml(p.display_name ?? '')}</td>
+          <td style="font-size:0.8rem;color:var(--muted);white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:0">${platDot}${escHtml(p.display_name ?? '')}</span></td>
           <td style="font-size:0.8rem;color:var(--muted);white-space:nowrap">${formatDate(p.created_at)}</td>
           <td><span class="post-status ${escHtml(p.status)}">${escHtml(statusText)}</span></td>
-          <td class="stat-cell" id="stat-views-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>
+          <td class="stat-cell" id="stat-views-${escHtml(p.id)}">${syncPlaceholder}</td>
           <td class="stat-cell" id="stat-likes-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>
           <td class="stat-cell col-comments" id="stat-comments-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>
           <td class="stat-cell col-shares"   id="stat-shares-${escHtml(p.id)}">${hasStats ? '…' : dash}</td>`;
