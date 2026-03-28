@@ -81,6 +81,11 @@
 
 ## ✅ Completed
 
+- [x] Auto-retry logic (`withRetry` + platform-specific `isRetryable` predicates wired into all 6 publish routes)
+- [x] D1 migration: `retry_count` + `last_error` columns added to `posts` table (applied 2026-03-28)
+- [x] Rate limit tracking (`captureRateLimits` helper wired into TikTok, Instagram, YouTube publish + status flows)
+- [x] Fix Instagram publish: missing `failed` DB write on `media_publish` exhaustion
+- [x] `sendDiscordAlert` extended with optional `color` + `title` params (yellow 0xffcc00 for rate limit warnings)
 - [x] Build v1 app (plain HTML + Cloudflare Workers, single TikTok account)
 - [x] Fix avatar broken image (initials fallback)
 - [x] Fix schedule toggle CSS specificity bug

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>(function(){var t=localStorage.getItem('creatorpost-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})()</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calendar — CreatorPost</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <style>
+    .page-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ── Top controls bar ── */
+    .cal-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .cal-month-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .cal-month-nav h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      min-width: 180px;
+      text-align: center;
+    }
+    .cal-nav-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .cal-nav-btn:hover { background: var(--hover-bg); border-color: var(--border-strong); }
+
+    /* ── Filter bar (same pattern as posts page) ── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .platform-pills { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+    .platform-pill {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .platform-pill:hover { border-color: var(--border-strong); color: var(--text); }
+    .platform-pill.active { background: var(--accent-soft); color: var(--accent-light); border-color: var(--accent-ring); }
+    .platform-pill.active[data-platform="tiktok"]    { background: var(--bg-tiktok);    color: var(--color-tiktok);    border-color: var(--border-strong); }
+    .platform-pill.active[data-platform="youtube"]   { background: var(--bg-youtube);   color: var(--color-youtube);   border-color: var(--bg-youtube); }
+    .platform-pill.active[data-platform="instagram"] { background: var(--bg-instagram); color: var(--color-instagram); border-color: var(--bg-instagram); }
+    .filter-select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 0.3rem 0.65rem;
+      cursor: pointer;
+    }
+
+    /* ── Calendar grid ── */
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      border-left: 1px solid var(--border);
+      border-top: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--card-shadow);
+    }
+    .cal-day-hdr {
+      padding: 0.45rem 0;
+      text-align: center;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-alt);
+    }
+    .cal-cell {
+      min-height: 88px;
+      padding: 0.4rem 0.45rem;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+      position: relative;
+    }
+    .cal-cell:hover { background: var(--hover-bg); }
+    .cal-cell.other-month { opacity: 0.3; pointer-events: none; }
+    .cal-cell.today .cal-day-num {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+    }
+    .cal-cell.selected { background: var(--accent-soft); }
+    .cal-cell.selected:hover { background: var(--accent-soft); }
+    .cal-day-num {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text);
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.3rem;
+      flex-shrink: 0;
+    }
+    .cal-dots { display: flex; flex-wrap: wrap; gap: 2px; }
+    .cal-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .cal-more {
+      font-size: 0.58rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+      font-weight: 600;
+    }
+
+    /* ── Day detail panel ── */
+    .day-detail {
+      margin-top: 1.25rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: var(--card-shadow);
+    }
+    .day-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-alt);
+    }
+    .day-detail-header span {
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .detail-close-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      line-height: 1;
+    }
+    .detail-close-btn:hover { color: var(--text); background: var(--hover-bg); }
+    .detail-post-list { padding: 0.5rem 1.25rem; }
+    .detail-post-row {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-post-row:last-child { border-bottom: none; }
+    .detail-caption {
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.3rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .detail-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .detail-platform {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .detail-account {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .detail-time {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .detail-empty {
+      padding: 1.25rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    /* ── Loading state ── */
+    .cal-loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    /* ── Mobile ── */
+    @media (max-width: 640px) {
+      .page-wrap { padding: 1rem 0.75rem 3rem; }
+      .cal-cell { min-height: 56px; padding: 0.25rem; }
+      .cal-day-num { font-size: 0.65rem; width: 18px; height: 18px; }
+      .cal-dot { width: 5px; height: 5px; }
+      .cal-more { font-size: 0.52rem; }
+      .cal-controls { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/dashboard" class="logo">
+      <img src="/logo.png" alt="CreatorPost" class="logo-img" />
+      Creator<span>Post</span>
+    </a>
+    <ul>
+      <li><a href="/dashboard">Dashboard</a></li>
+      <li><a href="/posts">Posts</a></li>
+      <li><a href="/calendar" class="active">Calendar</a></li>
+      <li><a href="/analytics">Analytics</a></li>
+    </ul>
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle light/dark theme">
+        <svg id="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem">
+        <span style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <!-- Controls -->
+    <div class="cal-controls">
+      <div class="filter-bar">
+        <div class="platform-pills">
+          <button class="platform-pill active" data-platform="">All</button>
+          <button class="platform-pill" data-platform="tiktok">TikTok</button>
+          <button class="platform-pill" data-platform="youtube">YouTube</button>
+          <button class="platform-pill" data-platform="instagram">Instagram</button>
+        </div>
+        <select class="filter-select" id="account-filter">
+          <option value="">All Accounts</option>
+        </select>
+      </div>
+      <div class="cal-month-nav">
+        <button class="cal-nav-btn" id="cal-prev" title="Previous month">&#8592;</button>
+        <h2 id="cal-month-label">Loading…</h2>
+        <button class="cal-nav-btn" id="cal-next" title="Next month">&#8594;</button>
+      </div>
+    </div>
+
+    <!-- Calendar grid (headers + day cells) -->
+    <div class="cal-grid" id="cal-grid">
+      <div class="cal-day-hdr">Sun</div>
+      <div class="cal-day-hdr">Mon</div>
+      <div class="cal-day-hdr">Tue</div>
+      <div class="cal-day-hdr">Wed</div>
+      <div class="cal-day-hdr">Thu</div>
+      <div class="cal-day-hdr">Fri</div>
+      <div class="cal-day-hdr">Sat</div>
+      <!-- Day cells rendered by JS -->
+      <div class="cal-loading" style="grid-column:1/-1;padding:3rem;text-align:center;color:var(--muted)">Loading posts…</div>
+    </div>
+
+    <!-- Day detail panel (hidden until a day is clicked) -->
+    <div class="day-detail" id="day-detail" style="display:none">
+      <div class="day-detail-header">
+        <span id="day-detail-date"></span>
+        <button class="detail-close-btn" onclick="closeDetail()">✕</button>
+      </div>
+      <div id="day-detail-posts" class="detail-post-list"></div>
+    </div>
+  </div>
+
+  <script>
+    // ─────────────────────────────────────────────────────────────────────────
+    // State
+    // ─────────────────────────────────────────────────────────────────────────
+    const today = new Date();
+    let currentYear  = today.getFullYear();
+    let currentMonth = today.getMonth(); // 0-indexed
+    let selectedDay  = null;
+    let allPosts     = [];    // all fetched posts (published + scheduled)
+    let accounts     = [];
+    let activePlatform  = '';
+    let activeAccountId = '';
+    let loading = false;
+
+    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
+    const PLATFORM_COLOR_VAR = {
+      tiktok: 'var(--color-tiktok)',
+      youtube: 'var(--color-youtube)',
+      instagram: 'var(--color-instagram)',
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Init
+    // ─────────────────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const res  = await fetch('/api/me');
+        if (res.status === 401) { window.location.href = '/login'; return; }
+        const data = await res.json();
+
+        accounts = Array.isArray(data.accounts) ? data.accounts
+          : (data.open_id || data.display_name ? [data] : []);
+
+        renderNavAccount(data.user || data);
+        populateAccountFilter();
+        await fetchAllPosts();
+        renderCalendar();
+      } catch (e) {
+        console.error('Init error', e);
+      }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Fetch all posts (paginate through entire history)
+    // ─────────────────────────────────────────────────────────────────────────
+    async function fetchAllPosts() {
+      loading = true;
+      allPosts = [];
+      let cursor = null;
+      let done   = false;
+
+      while (!done) {
+        const params = new URLSearchParams({ limit: '200' });
+        if (cursor) params.set('cursor', cursor);
+        if (activePlatform)   params.set('platform', activePlatform);
+        if (activeAccountId)  params.set('account_id', activeAccountId);
+
+        const res = await fetch(`/api/posts?${params}`);
+        if (!res.ok) break;
+        const batch = await res.json();
+
+        const relevant = batch.filter(p =>
+          ['published', 'scheduled', 'inbox', 'processing'].includes(p.status)
+        );
+        allPosts.push(...relevant);
+
+        if (batch.length < 200) done = true;
+        else cursor = batch[batch.length - 1].created_at;
+      }
+      loading = false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Calendar rendering
+    // ─────────────────────────────────────────────────────────────────────────
+    function getPostDate(p) {
+      return new Date(p.scheduled_at || p.created_at || p.time || 0);
+    }
+
+    function getPostsForDay(year, month, day) {
+      return allPosts.filter(p => {
+        const d = getPostDate(p);
+        return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+      });
+    }
+
+    function renderCalendar() {
+      document.getElementById('cal-month-label').textContent =
+        new Date(currentYear, currentMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+      const grid = document.getElementById('cal-grid');
+      // Remove previous cells (keep the 7 header divs)
+      const cells = grid.querySelectorAll('.cal-cell, .cal-loading');
+      cells.forEach(c => c.remove());
+
+      const firstDow   = new Date(currentYear, currentMonth, 1).getDay(); // 0=Sun
+      const daysInMth  = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const prevDays   = new Date(currentYear, currentMonth, 0).getDate();
+
+      // Leading empty cells (previous month)
+      for (let i = 0; i < firstDow; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-cell other-month';
+        cell.innerHTML = `<div class="cal-day-num">${prevDays - firstDow + 1 + i}</div>`;
+        grid.appendChild(cell);
+      }
+
+      // Current month days
+      for (let day = 1; day <= daysInMth; day++) {
+        const isToday    = today.getFullYear() === currentYear && today.getMonth() === currentMonth && today.getDate() === day;
+        const isSelected = selectedDay === day;
+        const dayPosts   = getPostsForDay(currentYear, currentMonth, day);
+
+        const cell = document.createElement('div');
+        cell.className = `cal-cell${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}`;
+
+        const dotsHtml = dayPosts.slice(0, 3).map(p =>
+          `<span class="cal-dot" style="background:${PLATFORM_COLOR_VAR[p.platform] ?? 'var(--muted)'}"></span>`
+        ).join('');
+
+        const moreHtml = dayPosts.length > 3
+          ? `<div class="cal-more">+${dayPosts.length - 3} more</div>`
+          : '';
+
+        cell.innerHTML = `
+          <div class="cal-day-num">${day}</div>
+          <div class="cal-dots">${dotsHtml}</div>
+          ${moreHtml}`;
+
+        cell.addEventListener('click', () => selectDay(day));
+        grid.appendChild(cell);
+      }
+
+      // Trailing cells (next month)
+      const totalCells = firstDow + daysInMth;
+      const remainder  = totalCells % 7;
+      if (remainder !== 0) {
+        for (let i = 1; i <= 7 - remainder; i++) {
+          const cell = document.createElement('div');
+          cell.className = 'cal-cell other-month';
+          cell.innerHTML = `<div class="cal-day-num">${i}</div>`;
+          grid.appendChild(cell);
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Day detail panel
+    // ─────────────────────────────────────────────────────────────────────────
+    function selectDay(day) {
+      selectedDay = (selectedDay === day) ? null : day;
+      renderCalendar();
+
+      const panel = document.getElementById('day-detail');
+      if (!selectedDay) { panel.style.display = 'none'; return; }
+
+      const posts = getPostsForDay(currentYear, currentMonth, day);
+      const dateLabel = new Date(currentYear, currentMonth, day)
+        .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+      document.getElementById('day-detail-date').textContent = dateLabel;
+
+      const listEl = document.getElementById('day-detail-posts');
+      if (!posts.length) {
+        listEl.innerHTML = '<div class="detail-empty">No posts on this day.</div>';
+      } else {
+        listEl.innerHTML = posts.map(p => {
+          const d = getPostDate(p);
+          const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          const raw     = (p.caption || '').replace(/#\S+/g, '').trim();
+          const caption = raw.length > 72 ? raw.slice(0, 70) + '…' : raw || '(no caption)';
+          const label   = PLATFORM_LABEL[p.platform] ?? p.platform;
+          const statusLabel = { published: 'published', scheduled: 'scheduled', processing: 'processing', failed: 'failed', inbox: 'in drafts' }[p.status] ?? p.status;
+          return `
+            <div class="detail-post-row">
+              <div class="detail-caption">${escHtml(caption)}</div>
+              <div class="detail-meta">
+                <span class="detail-platform" style="color:${PLATFORM_COLOR_VAR[p.platform] ?? 'var(--muted)'}">${escHtml(label)}</span>
+                <span class="detail-account">${escHtml(p.display_name || p.account || '')}</span>
+                <span class="post-status ${escHtml(p.status)}">${escHtml(statusLabel)}</span>
+                <span class="detail-time">${timeStr}</span>
+              </div>
+            </div>`;
+        }).join('');
+      }
+
+      panel.style.display = '';
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function closeDetail() {
+      selectedDay = null;
+      document.getElementById('day-detail').style.display = 'none';
+      renderCalendar();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Month navigation
+    // ─────────────────────────────────────────────────────────────────────────
+    document.getElementById('cal-prev').addEventListener('click', () => {
+      currentMonth--;
+      if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+      selectedDay = null;
+      document.getElementById('day-detail').style.display = 'none';
+      renderCalendar();
+    });
+
+    document.getElementById('cal-next').addEventListener('click', () => {
+      currentMonth++;
+      if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+      selectedDay = null;
+      document.getElementById('day-detail').style.display = 'none';
+      renderCalendar();
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Filters
+    // ─────────────────────────────────────────────────────────────────────────
+    document.querySelectorAll('.platform-pill').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        document.querySelectorAll('.platform-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activePlatform = btn.dataset.platform;
+        selectedDay = null;
+        document.getElementById('day-detail').style.display = 'none';
+        await fetchAllPosts();
+        renderCalendar();
+      });
+    });
+
+    document.getElementById('account-filter').addEventListener('change', async (e) => {
+      activeAccountId = e.target.value;
+      selectedDay = null;
+      document.getElementById('day-detail').style.display = 'none';
+      await fetchAllPosts();
+      renderCalendar();
+    });
+
+    function populateAccountFilter() {
+      const sel = document.getElementById('account-filter');
+      sel.innerHTML = '<option value="">All Accounts</option>';
+      const byPlatform = {};
+      for (const a of accounts) {
+        const p = a.platform ?? 'tiktok';
+        if (!byPlatform[p]) byPlatform[p] = [];
+        byPlatform[p].push(a);
+      }
+      for (const [platform, accs] of Object.entries(byPlatform)) {
+        const group = document.createElement('optgroup');
+        group.label = PLATFORM_LABEL[platform] ?? platform;
+        for (const a of accs) {
+          const opt = document.createElement('option');
+          opt.value = a.id ?? a.open_id ?? '';
+          opt.textContent = a.username ? `@${a.username}` : (a.display_name ?? a.open_id ?? '');
+          group.appendChild(opt);
+        }
+        sel.appendChild(group);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Nav account
+    // ─────────────────────────────────────────────────────────────────────────
+    function renderNavAccount(user) {
+      const el = document.getElementById('nav-account');
+      if (!user?.email) return;
+      el.innerHTML = `
+        <span style="font-size:0.82rem;color:var(--muted)">${escHtml(user.email)}</span>
+        <a href="/account" style="font-size:0.82rem;color:var(--muted);text-decoration:none;padding:0.3rem 0.65rem;border:1px solid var(--border);border-radius:6px;transition:all 0.15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--border-strong)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">Account</a>`;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Theme
+    // ─────────────────────────────────────────────────────────────────────────
+    function toggleTheme() {
+      const next = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('creatorpost-theme', next);
+      _syncThemeIcon();
+    }
+    function _syncThemeIcon() {
+      const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+      document.getElementById('icon-sun').style.display  = isDark ? '' : 'none';
+      document.getElementById('icon-moon').style.display = isDark ? 'none' : '';
+    }
+    document.addEventListener('DOMContentLoaded', _syncThemeIcon);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+    function escHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

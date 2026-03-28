@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <script>(function(){var t=localStorage.getItem('creatorpost-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})()</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics — CreatorPost</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    .page-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 5rem;
+    }
+
+    /* ── Summary cards ── */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      box-shadow: var(--card-shadow);
+    }
+    .summary-card-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+    .summary-card-num {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      color: var(--text);
+    }
+    .summary-card-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+    }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .platform-pills { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+    .platform-pill {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .platform-pill:hover { border-color: var(--border-strong); color: var(--text); }
+    .platform-pill.active { background: var(--accent-soft); color: var(--accent-light); border-color: var(--accent-ring); }
+    .platform-pill.active[data-platform="tiktok"]    { background: var(--bg-tiktok);    color: var(--color-tiktok);    border-color: var(--border-strong); }
+    .platform-pill.active[data-platform="youtube"]   { background: var(--bg-youtube);   color: var(--color-youtube);   border-color: var(--bg-youtube); }
+    .platform-pill.active[data-platform="instagram"] { background: var(--bg-instagram); color: var(--color-instagram); border-color: var(--bg-instagram); }
+    .filter-select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 0.3rem 0.65rem;
+      cursor: pointer;
+    }
+
+    /* ── Range pills ── */
+    .range-pills { display: flex; gap: 0.25rem; }
+    .range-pill {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .range-pill:hover { color: var(--text); }
+    .range-pill.active { background: var(--surface); border-color: var(--border); color: var(--text); }
+
+    /* ── Chart section ── */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--card-shadow);
+    }
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .chart-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 240px;
+    }
+    .chart-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 240px;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    .chart-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 240px;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    /* ── Account performance table ── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: var(--card-shadow);
+    }
+    .table-card-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-alt);
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .perf-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .perf-table th {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 700;
+      padding: 0.6rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      transition: color 0.15s;
+    }
+    .perf-table th:hover { color: var(--text); }
+    .perf-table th.sort-asc::after  { content: ' ↑'; color: var(--accent-light); }
+    .perf-table th.sort-desc::after { content: ' ↓'; color: var(--accent-light); }
+    .perf-table th.right { text-align: right; }
+    .perf-table td {
+      font-size: 0.875rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .perf-table tbody tr:last-child td { border-bottom: none; }
+    .perf-table tbody tr:hover { background: var(--hover-bg); }
+    .perf-table td.num {
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      color: var(--muted);
+    }
+    .perf-table td.num.has-value { color: var(--text); }
+    .perf-account-name {
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .perf-platform-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+    }
+    .perf-best-post {
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .table-empty {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    @media (max-width: 768px) {
+      .summary-cards { grid-template-columns: repeat(2, 1fr); }
+      .col-avg, .col-best { display: none; }
+    }
+    @media (max-width: 500px) {
+      .summary-cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/dashboard" class="logo">
+      <img src="/logo.png" alt="CreatorPost" class="logo-img" />
+      Creator<span>Post</span>
+    </a>
+    <ul>
+      <li><a href="/dashboard">Dashboard</a></li>
+      <li><a href="/posts">Posts</a></li>
+      <li><a href="/calendar">Calendar</a></li>
+      <li><a href="/analytics" class="active">Analytics</a></li>
+    </ul>
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle light/dark theme">
+        <svg id="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem">
+        <span style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <h2 style="font-size:1.4rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:1.5rem">Analytics</h2>
+
+    <!-- Summary cards -->
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="summary-card-label">Total Views</div>
+        <div class="summary-card-num" id="card-total-views">—</div>
+        <div class="summary-card-sub" id="card-total-views-sub">&nbsp;</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Total Posts</div>
+        <div class="summary-card-num" id="card-total-posts">—</div>
+        <div class="summary-card-sub" id="card-total-posts-sub">&nbsp;</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Views This Week</div>
+        <div class="summary-card-num" id="card-week-views">—</div>
+        <div class="summary-card-sub" id="card-week-views-sub">&nbsp;</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Avg Views / Post</div>
+        <div class="summary-card-num" id="card-avg-views">—</div>
+        <div class="summary-card-sub" id="card-avg-views-sub">&nbsp;</div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <div class="platform-pills">
+        <button class="platform-pill active" data-platform="">All</button>
+        <button class="platform-pill" data-platform="tiktok">TikTok</button>
+        <button class="platform-pill" data-platform="youtube">YouTube</button>
+        <button class="platform-pill" data-platform="instagram">Instagram</button>
+      </div>
+      <select class="filter-select" id="account-filter">
+        <option value="">All Accounts</option>
+      </select>
+    </div>
+
+    <!-- Views over time chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <span class="chart-title">Views Over Time</span>
+        <div class="range-pills">
+          <button class="range-pill" data-range="7">7d</button>
+          <button class="range-pill active" data-range="30">30d</button>
+          <button class="range-pill" data-range="90">90d</button>
+          <button class="range-pill" data-range="0">All</button>
+        </div>
+      </div>
+      <div id="chart-container" class="chart-loading">Loading…</div>
+    </div>
+
+    <!-- Account performance table -->
+    <div class="table-card">
+      <div class="table-card-header">Account Performance</div>
+      <table class="perf-table">
+        <thead>
+          <tr>
+            <th data-col="account">Account</th>
+            <th data-col="posts" class="right">Posts</th>
+            <th data-col="views" class="right sort-desc">Views</th>
+            <th data-col="avg" class="right col-avg">Avg Views</th>
+            <th class="col-best">Best Post</th>
+          </tr>
+        </thead>
+        <tbody id="perf-tbody">
+          <tr><td colspan="5" class="table-empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // TODO: add server-side daily aggregation endpoint for more efficient analytics queries
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // State
+    // ─────────────────────────────────────────────────────────────────────────
+    let allPosts        = [];   // all fetched posts
+    let statsCache      = {};   // { postId: { views, likes, comments, shares } }
+    let accounts        = [];
+    let activePlatform  = '';
+    let activeAccountId = '';
+    let activeRange     = 30;   // days; 0 = all time
+    let sortCol         = 'views';
+    let sortDir         = 'desc';
+    let chart           = null; // Chart.js instance
+
+    const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
+    const PLATFORM_COLOR_VAR = {
+      tiktok:    'var(--color-tiktok)',
+      youtube:   'var(--color-youtube)',
+      instagram: 'var(--color-instagram)',
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Init
+    // ─────────────────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', async () => {
+      _syncThemeIcon();
+      try {
+        const res = await fetch('/api/me');
+        if (res.status === 401) { window.location.href = '/login'; return; }
+        const data = await res.json();
+
+        accounts = Array.isArray(data.accounts) ? data.accounts
+          : (data.open_id || data.display_name ? [data] : []);
+
+        renderNavAccount(data.user || data);
+        populateAccountFilter();
+        await loadAll();
+      } catch (e) {
+        console.error('Init error', e);
+      }
+    });
+
+    async function loadAll() {
+      await fetchAllPosts();
+      await fetchStats();
+      updateSummaryCards();
+      renderChart();
+      renderTable();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Fetch all posts
+    // ─────────────────────────────────────────────────────────────────────────
+    async function fetchAllPosts() {
+      allPosts = [];
+      let cursor = null;
+      let done   = false;
+
+      while (!done) {
+        const params = new URLSearchParams({ limit: '200' });
+        if (cursor)          params.set('cursor', cursor);
+        if (activePlatform)  params.set('platform', activePlatform);
+        if (activeAccountId) params.set('account_id', activeAccountId);
+
+        const res = await fetch(`/api/posts?${params}`);
+        if (!res.ok) break;
+        const batch = await res.json();
+
+        allPosts.push(...batch.filter(p => p.status === 'published'));
+
+        if (batch.length < 200) done = true;
+        else cursor = batch[batch.length - 1].created_at;
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Fetch stats for published posts that have video_ids
+    // ─────────────────────────────────────────────────────────────────────────
+    async function fetchStats() {
+      // Use localStorage cache (15-min TTL, shared with dashboard/posts)
+      try {
+        const cached = JSON.parse(localStorage.getItem('cp_post_stats') || '{}');
+        if (cached._ts && Date.now() - cached._ts < 15 * 60 * 1000) {
+          statsCache = cached;
+          return;
+        }
+      } catch {}
+
+      // Fetch fresh stats for posts with video_id
+      const ids = allPosts.map(p => p.id).filter(Boolean);
+      if (!ids.length) return;
+
+      // Chunk into batches of 50 to avoid too-long query strings
+      const CHUNK = 50;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        try {
+          const res = await fetch(`/api/posts/stats?ids=${chunk.join(',')}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          Object.assign(statsCache, data);
+        } catch {}
+      }
+
+      statsCache._ts = Date.now();
+      try { localStorage.setItem('cp_post_stats', JSON.stringify(statsCache)); } catch {}
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Filtered posts for current range
+    // ─────────────────────────────────────────────────────────────────────────
+    function postsInRange() {
+      if (!activeRange) return allPosts;
+      const cutoff = Date.now() - activeRange * 24 * 60 * 60 * 1000;
+      return allPosts.filter(p => new Date(p.created_at).getTime() >= cutoff);
+    }
+
+    function getViews(post) {
+      return statsCache[post.id]?.views ?? 0;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Summary cards
+    // ─────────────────────────────────────────────────────────────────────────
+    function updateSummaryCards() {
+      const posts = postsInRange();
+      const totalViews = posts.reduce((s, p) => s + getViews(p), 0);
+      const totalPosts = posts.length;
+      const avgViews   = totalPosts ? Math.round(totalViews / totalPosts) : 0;
+
+      const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const weekPosts  = allPosts.filter(p => new Date(p.created_at).getTime() >= weekCutoff);
+      const weekViews  = weekPosts.reduce((s, p) => s + getViews(p), 0);
+
+      document.getElementById('card-total-views').textContent = fmtNum(totalViews);
+      document.getElementById('card-total-posts').textContent = fmtNum(totalPosts);
+      document.getElementById('card-week-views').textContent  = fmtNum(weekViews);
+      document.getElementById('card-avg-views').textContent   = fmtNum(avgViews);
+
+      document.getElementById('card-total-views-sub').textContent  = activeRange ? `last ${activeRange} days` : 'all time';
+      document.getElementById('card-total-posts-sub').textContent  = activeRange ? `last ${activeRange} days` : 'all time';
+      document.getElementById('card-week-views-sub').textContent   = `${weekPosts.length} post${weekPosts.length !== 1 ? 's' : ''}`;
+      document.getElementById('card-avg-views-sub').textContent    = activeRange ? `last ${activeRange} days` : 'all time';
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Views-over-time chart
+    // ─────────────────────────────────────────────────────────────────────────
+    function renderChart() {
+      const container = document.getElementById('chart-container');
+      const posts = postsInRange();
+
+      if (!posts.length) {
+        if (chart) { chart.destroy(); chart = null; }
+        container.className = 'chart-empty';
+        container.innerHTML = 'No published posts in this range.';
+        return;
+      }
+
+      // Aggregate views by day
+      const dayMap = {}; // 'YYYY-MM-DD' → total views
+      for (const p of posts) {
+        const d = new Date(p.created_at);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        dayMap[key] = (dayMap[key] ?? 0) + getViews(p);
+      }
+
+      // Build continuous date range
+      const sortedKeys = Object.keys(dayMap).sort();
+      if (!sortedKeys.length) return;
+
+      let labels = [];
+      let values = [];
+
+      if (activeRange) {
+        // Fill every day in range, even those with 0 posts
+        for (let i = activeRange - 1; i >= 0; i--) {
+          const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          labels.push(key);
+          values.push(dayMap[key] ?? 0);
+        }
+      } else {
+        // All time: fill from first post to today
+        const first = new Date(sortedKeys[0]);
+        const now   = new Date();
+        for (let d = new Date(first); d <= now; d.setDate(d.getDate() + 1)) {
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          labels.push(key);
+          values.push(dayMap[key] ?? 0);
+        }
+      }
+
+      // Format labels for display
+      const displayLabels = labels.map(k => {
+        const [y, m, day] = k.split('-').map(Number);
+        return new Date(y, m - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      });
+
+      const isDark   = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+      const accent   = '#7c5cfc';
+      const gridCol  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+      const textCol  = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
+
+      // Ensure canvas exists inside container
+      container.className = 'chart-wrap';
+      if (!container.querySelector('canvas')) {
+        container.innerHTML = '<canvas id="views-chart"></canvas>';
+      }
+      const canvas = container.querySelector('canvas');
+
+      if (chart) { chart.destroy(); chart = null; }
+
+      chart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: displayLabels,
+          datasets: [{
+            label: 'Views',
+            data: values,
+            borderColor: accent,
+            backgroundColor: isDark ? 'rgba(124,92,252,0.12)' : 'rgba(124,92,252,0.08)',
+            borderWidth: 2,
+            pointRadius: labels.length > 60 ? 0 : 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: accent,
+            fill: true,
+            tension: 0.35,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? '#1e1e2e' : '#ffffff',
+              borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+              borderWidth: 1,
+              titleColor: isDark ? '#e8e8f0' : '#0f0f1a',
+              bodyColor:  isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
+              padding: 10,
+              callbacks: {
+                label: ctx => ` ${fmtNum(ctx.parsed.y)} views`,
+              }
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: gridCol },
+              ticks: {
+                color: textCol,
+                maxTicksLimit: 10,
+                font: { size: 11 },
+              },
+              border: { color: gridCol },
+            },
+            y: {
+              grid: { color: gridCol },
+              ticks: {
+                color: textCol,
+                font: { size: 11 },
+                callback: v => fmtNum(v),
+              },
+              border: { color: gridCol },
+              beginAtZero: true,
+            }
+          }
+        }
+      });
+    }
+
+    // Redraw chart on theme change (colors need to update)
+    function onThemeChange() {
+      if (chart) renderChart();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Account performance table
+    // ─────────────────────────────────────────────────────────────────────────
+    function buildTableData() {
+      // Group posts by account
+      const byAccount = {}; // key: `${platform}::${account_id}`
+
+      for (const p of postsInRange()) {
+        const key = `${p.platform}::${p.account_id || p.display_name}`;
+        if (!byAccount[key]) {
+          byAccount[key] = {
+            platform:    p.platform,
+            account_id:  p.account_id,
+            display_name: p.display_name || p.account || '',
+            username:    p.username || '',
+            posts: 0,
+            views: 0,
+            bestPostViews: 0,
+            bestPostCaption: '',
+          };
+        }
+        const entry = byAccount[key];
+        entry.posts++;
+        const v = getViews(p);
+        entry.views += v;
+        if (v > entry.bestPostViews) {
+          entry.bestPostViews   = v;
+          const raw = (p.caption || '').replace(/#\S+/g, '').trim();
+          entry.bestPostCaption = raw || '(no caption)';
+        }
+      }
+
+      const rows = Object.values(byAccount).map(r => ({
+        ...r,
+        avg: r.posts ? Math.round(r.views / r.posts) : 0,
+      }));
+
+      // Sort
+      rows.sort((a, b) => {
+        const av = a[sortCol] ?? 0;
+        const bv = b[sortCol] ?? 0;
+        if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+        return sortDir === 'asc' ? av - bv : bv - av;
+      });
+
+      return rows;
+    }
+
+    function renderTable() {
+      const rows = buildTableData();
+      const tbody = document.getElementById('perf-tbody');
+
+      // Update sort indicators on headers
+      document.querySelectorAll('.perf-table th[data-col]').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.col === sortCol) {
+          th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+      });
+
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="table-empty">No published posts yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => {
+        const label = PLATFORM_LABEL[r.platform] ?? r.platform;
+        const colorVar = PLATFORM_COLOR_VAR[r.platform] ?? 'var(--muted)';
+        const name  = r.username ? `@${r.username}` : r.display_name;
+        const bestCaption = r.bestPostCaption.length > 40 ? r.bestPostCaption.slice(0, 38) + '…' : r.bestPostCaption;
+
+        return `<tr>
+          <td>
+            <span class="perf-account-name">${escHtml(name)}</span>
+            <span class="perf-platform-badge" style="background:${colorVar}20;color:${colorVar}">${escHtml(label)}</span>
+          </td>
+          <td class="num has-value">${r.posts}</td>
+          <td class="num ${r.views ? 'has-value' : ''}">${r.views ? fmtNum(r.views) : '—'}</td>
+          <td class="num col-avg ${r.avg ? 'has-value' : ''}">${r.avg ? fmtNum(r.avg) : '—'}</td>
+          <td class="col-best">
+            ${r.bestPostCaption ? `<span class="perf-best-post" title="${escHtml(r.bestPostCaption)}">${escHtml(bestCaption)}</span>${r.bestPostViews ? `<span style="font-size:0.75rem;color:var(--muted);margin-left:0.4rem">${fmtNum(r.bestPostViews)} views</span>` : ''}` : '<span style="color:var(--muted)">—</span>'}
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Filters & range controls
+    // ─────────────────────────────────────────────────────────────────────────
+    document.querySelectorAll('.platform-pill').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        document.querySelectorAll('.platform-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activePlatform = btn.dataset.platform;
+        await loadAll();
+      });
+    });
+
+    document.getElementById('account-filter').addEventListener('change', async e => {
+      activeAccountId = e.target.value;
+      await loadAll();
+    });
+
+    document.querySelectorAll('.range-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.range-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeRange = Number(btn.dataset.range);
+        updateSummaryCards();
+        renderChart();
+        renderTable();
+      });
+    });
+
+    document.querySelectorAll('.perf-table th[data-col]').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (sortCol === col) {
+          sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+        } else {
+          sortCol = col;
+          sortDir = col === 'account' ? 'asc' : 'desc';
+        }
+        renderTable();
+      });
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Account filter population
+    // ─────────────────────────────────────────────────────────────────────────
+    function populateAccountFilter() {
+      const sel = document.getElementById('account-filter');
+      sel.innerHTML = '<option value="">All Accounts</option>';
+      const byPlatform = {};
+      for (const a of accounts) {
+        const p = a.platform ?? 'tiktok';
+        if (!byPlatform[p]) byPlatform[p] = [];
+        byPlatform[p].push(a);
+      }
+      for (const [platform, accs] of Object.entries(byPlatform)) {
+        const group = document.createElement('optgroup');
+        group.label = PLATFORM_LABEL[platform] ?? platform;
+        for (const a of accs) {
+          const opt = document.createElement('option');
+          opt.value = a.id ?? a.open_id ?? '';
+          opt.textContent = a.username ? `@${a.username}` : (a.display_name ?? a.open_id ?? '');
+          group.appendChild(opt);
+        }
+        sel.appendChild(group);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Nav account
+    // ─────────────────────────────────────────────────────────────────────────
+    function renderNavAccount(user) {
+      const el = document.getElementById('nav-account');
+      if (!user?.email) return;
+      el.innerHTML = `
+        <span style="font-size:0.82rem;color:var(--muted)">${escHtml(user.email)}</span>
+        <a href="/account" style="font-size:0.82rem;color:var(--muted);text-decoration:none;padding:0.3rem 0.65rem;border:1px solid var(--border);border-radius:6px;transition:all 0.15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--border-strong)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">Account</a>`;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Theme
+    // ─────────────────────────────────────────────────────────────────────────
+    function toggleTheme() {
+      const next = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('creatorpost-theme', next);
+      _syncThemeIcon();
+      onThemeChange();
+    }
+    function _syncThemeIcon() {
+      const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+      document.getElementById('icon-sun').style.display  = isDark ? '' : 'none';
+      document.getElementById('icon-moon').style.display = isDark ? 'none' : '';
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+    function fmtNum(n) {
+      if (n == null || isNaN(n)) return '—';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+      if (n >= 10_000)    return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+      return n.toLocaleString();
+    }
+
+    function escHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

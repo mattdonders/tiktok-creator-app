@@ -151,7 +151,7 @@ if (idsParam) {
 
 ### Page structure (top to bottom)
 
-1. `<head>` — title "Posts & Analytics — CreatorPost", link to styles.css, page-scoped `<style>`
+1. `<head>` — title "Posts & Analytics", link to styles.css, page-scoped `<style>`
 2. Nav — same pattern as dashboard.html; Posts link gets `style="color:var(--text);font-weight:500"` as active
 3. `.posts-layout` wrapper (max-width 1100px, same padding as `.dash-layout`)
 4. Page title: `<h2>Posts & Analytics</h2>`
