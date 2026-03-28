@@ -10,23 +10,178 @@
   <link rel="icon" type="image/png" href="/logo.png" />
   <link rel="apple-touch-icon" href="/logo.png" />
   <meta property="og:image" content="https://creatorpost.app/logo.png" />
+  <style>
+    /* ── Landing nav groups ── */
+    .nav-brand { display: flex; align-items: center; gap: 0.35rem; flex: 1; }
+    .nav-right  { display: flex; align-items: center; gap: 0.75rem; flex: 1; justify-content: flex-end; }
+    .nav-badge {
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      background: var(--accent-soft); color: var(--accent-light);
+      border: 1px solid var(--accent-ring); border-radius: 4px;
+      padding: 0.15rem 0.45rem; line-height: 1;
+    }
+
+    /* ── Hero mockup ── */
+    .hero-mockup-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 0 2rem 5.5rem;
+    }
+    .mockup-browser {
+      width: 100%;
+      max-width: 680px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.08), 0 6px 20px rgba(0,0,0,0.05);
+      transform: perspective(1200px) rotateX(2.5deg);
+      transform-origin: top center;
+      transition: transform 0.35s ease, box-shadow 0.35s ease;
+    }
+    [data-theme="dark"] .mockup-browser {
+      box-shadow: 0 24px 64px rgba(0,0,0,0.55), 0 6px 20px rgba(0,0,0,0.3);
+    }
+    .mockup-browser:hover {
+      transform: perspective(1200px) rotateX(0deg);
+      box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.07);
+    }
+    [data-theme="dark"] .mockup-browser:hover {
+      box-shadow: 0 32px 80px rgba(0,0,0,0.65), 0 8px 24px rgba(0,0,0,0.35);
+    }
+    .mockup-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      padding: 0.55rem 0.9rem;
+      background: var(--surface-alt);
+      border-bottom: 1px solid var(--border);
+    }
+    .mockup-dots { display: flex; gap: 0.3rem; align-items: center; flex-shrink: 0; }
+    .m-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+    .m-dot-r { background: #ff5f57; }
+    .m-dot-y { background: #ffbe2e; }
+    .m-dot-g { background: #28ca41; }
+    .mockup-url {
+      flex: 1;
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.18rem 0.75rem;
+      max-width: 240px;
+      margin: 0 auto;
+      letter-spacing: 0.01em;
+    }
+    .mockup-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .mockup-upload {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1.5rem;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+      gap: 0.4rem;
+    }
+    .mockup-play-btn {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.35rem;
+    }
+    .mockup-file-label { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+    .mockup-file-sub   { font-size: 0.67rem; color: var(--muted); }
+    .mockup-panel {
+      padding: 0.85rem 1rem;
+      display: flex;
+      flex-direction: column;
+    }
+    .mockup-platform-group { margin-bottom: 0.45rem; }
+    .mockup-platform-label {
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding-bottom: 0.2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.22rem;
+    }
+    .m-tk { color: var(--color-tiktok); }
+    .m-yt { color: var(--color-youtube); }
+    .m-ig { color: var(--color-instagram); }
+    .mockup-acct {
+      font-size: 0.7rem;
+      color: var(--muted);
+      padding: 0.12rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .mockup-acct.sel { color: var(--text); font-weight: 500; }
+    .m-check { color: var(--accent); font-size: 0.65rem; width: 10px; flex-shrink: 0; line-height: 1; }
+    .mockup-publish-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.45rem 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: default;
+      width: 100%;
+      margin-top: auto;
+      padding-top: 0.7rem;
+      letter-spacing: -0.01em;
+    }
+    .mockup-stats-strip {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .m-sep { opacity: 0.35; }
+    @media (max-width: 640px) {
+      .mockup-browser { transform: none !important; }
+      .mockup-body { grid-template-columns: 1fr; }
+      .mockup-upload { border-right: none; border-bottom: 1px solid var(--border); padding: 1.25rem; }
+      nav ul { display: none; }
+    }
+  </style>
 </head>
 <body>
 
   <!-- Nav -->
   <nav>
-    <a href="/" class="logo"><img src="/logo.png" alt="CreatorPost" class="logo-img" />Creator<span>Post</span></a>
-    <span style="font-size:0.65rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--accent-soft);color:var(--accent-light);border:1px solid var(--accent-ring);border-radius:4px;padding:0.15rem 0.45rem;margin-left:0.35rem;vertical-align:middle">Beta</span>
+    <div class="nav-brand">
+      <a href="/" class="logo"><img src="/logo.png" alt="CreatorPost" class="logo-img" />Creator<span>Post</span></a>
+      <span class="nav-badge">Beta</span>
+    </div>
     <ul>
       <li><a href="#features">Features</a></li>
       <li><a href="#how-it-works">How it works</a></li>
       <li><a href="/privacy.html">Privacy</a></li>
     </ul>
-    <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle light/dark theme">
-      <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-    </button>
-    <a href="/login" class="btn btn-primary">Get started</a>
+    <div class="nav-right">
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle light/dark theme">
+        <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="/login" class="btn btn-primary">Get started</a>
+    </div>
   </nav>
 
   <!-- Hero -->
@@ -40,42 +195,91 @@
     </div>
   </section>
 
+  <!-- Hero Mockup -->
+  <div class="hero-mockup-wrap">
+    <div class="mockup-browser">
+      <div class="mockup-titlebar">
+        <div class="mockup-dots">
+          <span class="m-dot m-dot-r"></span>
+          <span class="m-dot m-dot-y"></span>
+          <span class="m-dot m-dot-g"></span>
+        </div>
+        <div class="mockup-url">creatorpost.app/dashboard</div>
+      </div>
+      <div class="mockup-body">
+        <div class="mockup-upload">
+          <div class="mockup-play-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg"><polygon points="6,3 20,12 6,21"/></svg>
+          </div>
+          <div class="mockup-file-label">Ready to publish</div>
+          <div class="mockup-file-sub">summer_vlog_final.mp4</div>
+        </div>
+        <div class="mockup-panel">
+          <div class="mockup-platform-group">
+            <div class="mockup-platform-label m-tk">TikTok</div>
+            <div class="mockup-acct sel"><span class="m-check">✓</span> @lifestyle_daily</div>
+            <div class="mockup-acct sel"><span class="m-check">✓</span> @cooking_tips</div>
+            <div class="mockup-acct"><span class="m-check" style="visibility:hidden">✓</span> @travel.clips</div>
+          </div>
+          <div class="mockup-platform-group">
+            <div class="mockup-platform-label m-yt">YouTube</div>
+            <div class="mockup-acct sel"><span class="m-check">✓</span> @lifestyle_daily</div>
+          </div>
+          <div class="mockup-platform-group">
+            <div class="mockup-platform-label m-ig">Instagram</div>
+            <div class="mockup-acct sel"><span class="m-check">✓</span> @cooking_tips</div>
+          </div>
+          <button class="mockup-publish-btn">Publish Now →</button>
+        </div>
+      </div>
+      <div class="mockup-stats-strip">
+        <span>👁 12.4K views</span>
+        <span class="m-sep">·</span>
+        <span>📋 156 posts</span>
+        <span class="m-sep">·</span>
+        <span>🔗 3 platforms</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Features -->
   <section class="features" id="features">
-    <p class="section-label">Features</p>
-    <h2 class="section-title">Everything you need to post consistently</h2>
-    <p class="section-sub">Stop letting publishing friction slow down your growth. CreatorPost handles the distribution so you can focus on creating.</p>
+    <div class="features-inner">
+      <p class="section-label">Features</p>
+      <h2 class="section-title">Everything you need to post consistently</h2>
+      <p class="section-sub">Stop letting publishing friction slow down your growth. CreatorPost handles the distribution so you can focus on creating.</p>
 
-    <div class="feature-grid">
-      <div class="feature-card">
-        <div class="feature-icon">⚡</div>
-        <h3>One Upload, Every Platform</h3>
-        <p>Upload your video once and publish to TikTok, YouTube Shorts, and Instagram Reels simultaneously — with one click.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">🗓</div>
-        <h3>Smart Scheduling</h3>
-        <p>Queue up content in advance and schedule posts for peak engagement times. Your calendar, your cadence, every platform.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">👥</div>
-        <h3>Multi-Account Support</h3>
-        <p>Connect multiple accounts across platforms from a single dashboard. Perfect for agencies and creators running multiple channels.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">📊</div>
-        <h3>Post Tracking</h3>
-        <p>See a full history of what was published, when, and where. Keep your content pipeline organized across every platform.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">🔒</div>
-        <h3>Secure by Default</h3>
-        <p>Your tokens are encrypted and never shared. We only request the minimum permissions needed to post on your behalf.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">🔗</div>
-        <h3>API-First</h3>
-        <p>Pipe videos from any workflow — local folders, cloud storage, custom scripts. CreatorPost is the publishing layer in your pipeline.</p>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>One Upload, Every Platform</h3>
+          <p>Upload your video once and publish to TikTok, YouTube Shorts, and Instagram Reels simultaneously — with one click.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🗓</div>
+          <h3>Smart Scheduling</h3>
+          <p>Queue up content in advance and schedule posts for peak engagement times. Your calendar, your cadence, every platform.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">👥</div>
+          <h3>Multi-Account Support</h3>
+          <p>Connect multiple accounts across platforms from a single dashboard. Perfect for agencies and creators running multiple channels.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Post Tracking</h3>
+          <p>See a full history of what was published, when, and where. Keep your content pipeline organized across every platform.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔒</div>
+          <h3>Secure by Default</h3>
+          <p>Your tokens are encrypted and never shared. We only request the minimum permissions needed to post on your behalf.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔗</div>
+          <h3>API-First</h3>
+          <p>Pipe videos from any workflow — local folders, cloud storage, custom scripts. CreatorPost is the publishing layer in your pipeline.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -122,10 +326,10 @@
     <h2>Ready to publish everywhere?</h2>
     <p>CreatorPost is in beta — join now and get free access while we're building.</p>
     <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-top:0.5rem">
-      <a href="/login" class="btn btn-primary" style="font-size:1.05rem;padding:0.75rem 2rem">Get started free</a>
+      <a href="/login" class="btn btn-primary" style="font-size:1.1rem;padding:0.9rem 2.5rem">Get started free</a>
       <a href="/login" class="btn btn-outline" style="font-size:1.05rem;padding:0.75rem 2rem">Join waitlist</a>
     </div>
-    <p style="font-size:0.8rem;color:var(--muted);margin-top:1rem;opacity:0.8">No credit card required · Free during beta</p>
+    <p style="font-size:0.8rem;color:var(--muted);margin-top:1.25rem">No credit card required · Free during beta</p>
   </section>
 
   <!-- Footer -->
