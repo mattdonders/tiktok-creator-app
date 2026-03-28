@@ -104,6 +104,7 @@
       align-items: center;
       justify-content: center;
     }
+    :root .drop-zone { background: rgba(124,92,252,0.02); }
     .drop-zone:hover, .drop-zone.dragover {
       border-color: var(--accent);
       background: var(--accent-soft);
@@ -272,6 +273,19 @@
     }
     .account-check-row:hover { border-color: var(--border-strong); }
     .account-check-row.selected { border-color: var(--accent); background: var(--accent-soft); }
+    /* Light mode: list-divider style instead of individual card borders */
+    :root .account-checkboxes { gap: 0; }
+    :root .account-check-row,
+    :root .form-group label.account-check-row {
+      border: none;
+      border-bottom: 1px solid var(--border);
+      border-radius: 0;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+    :root .account-check-row:last-child,
+    :root .form-group label.account-check-row:last-child { border-bottom: none; }
+    :root .account-check-row.selected { border-radius: 4px; }
     .account-check-row input[type="checkbox"] {
       accent-color: var(--accent);
       width: 15px;
@@ -517,7 +531,7 @@
 
     <!-- ── Compact accounts bar ── -->
     <div class="accounts-bar">
-      <span id="accounts-bar-label" style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+      <span id="accounts-bar-label" style="font-size:0.85rem;color:var(--text)">Loading…</span>
       <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem">+ TikTok</a>
         <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:var(--color-youtube);border-color:var(--bg-youtube)">+ YouTube</a>
@@ -727,7 +741,7 @@
           <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:1rem">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem">
               <div>
-                <div style="font-size:0.875rem;font-weight:500">Schedule for later</div>
+                <div style="font-size:0.875rem;font-weight:500;color:var(--text)">Schedule for later</div>
                 <div style="font-size:0.75rem;color:var(--muted);margin-top:0.1rem">Publish at a specific time</div>
               </div>
               <label class="toggle-switch">
@@ -914,7 +928,7 @@
       const parts = Object.entries(byPlatform).map(([p, n]) =>
         `<span style="color:${PLATFORM_COLOR[p] ?? '#888'};font-weight:600">${n} ${PLATFORM_LABEL[p] ?? p}</span>`
       );
-      label.innerHTML = parts.join(' · ') + '<span style="color:var(--muted)"> connected</span>';
+      label.innerHTML = parts.join(' · ') + '<span style="opacity:0.55"> connected</span>';
     }
 
     const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
