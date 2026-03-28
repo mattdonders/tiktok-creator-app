@@ -65,6 +65,82 @@ async function hashKey(rawKey) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ── Retry helpers ─────────────────────────────────────────────────────────────
+
+// Calls fn(attempt) up to 3 times with exponential backoff.
+// fn receives the 1-based attempt number and should throw on failure.
+// Pass retryable(err) to skip retries on permanent errors.
+// Pass onRetry(err, attempt) to run side-effects before each delay (e.g. token refresh).
+async function withRetry(fn, { retryable, onRetry } = {}) {
+  const DELAYS = [5_000, 15_000];
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { return await fn(attempt); }
+    catch (err) {
+      lastErr = err;
+      if (attempt < 3 && (!retryable || retryable(err))) {
+        if (onRetry) await onRetry(err, attempt).catch(() => {});
+        await new Promise(r => setTimeout(r, DELAYS[attempt - 1]));
+      } else { break; }
+    }
+  }
+  throw lastErr;
+}
+
+async function sendDiscordAlert(c, { platform, event, account_name, post_id, error_code, attempts }) {
+  if (!c.env.DISCORD_WEBHOOK_URL) return;
+  const embed = {
+    title:  `\uD83D\uDEA8 ${platform} publish exhausted retries`,
+    color:  0xff4444,
+    fields: [
+      { name: 'Event',      value: event,                    inline: true },
+      { name: 'Attempts',   value: String(attempts),          inline: true },
+      { name: 'Account',    value: account_name ?? 'unknown', inline: true },
+      { name: 'Post ID',    value: post_id      ?? 'none',    inline: true },
+      { name: 'Error Code', value: error_code   ?? 'unknown', inline: true },
+    ],
+    timestamp: new Date().toISOString(),
+  };
+  await fetch(c.env.DISCORD_WEBHOOK_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ embeds: [embed] }),
+  }).catch(() => {});
+}
+
+// TikTok error codes that will never succeed on retry
+const TIKTOK_PERMANENT_ERRORS = new Set([
+  'access_token_invalid', 'access_token_expired',
+  'spam_risk_too_many_posts', 'spam_risk_user_banned_from_post',
+  'video_already_exists', 'music_denied', 'privacy_level_option_mismatch',
+]);
+function isTiktokRetryable(err) { return !TIKTOK_PERMANENT_ERRORS.has(err.code); }
+
+// Instagram Graph API error codes that indicate permanent failure
+const IG_PERMANENT_CODES = new Set([10, 100, 190, 200, 368]);
+function isIgRetryable(err) { return !IG_PERMANENT_CODES.has(err.code); }
+
+// 401 is retryable — token is refreshed via onRetry before the next attempt. 403 is permanent.
+function isYouTubeRetryable(err) { return err.status !== 403; }
+
+// Typed wrapper around TikTok init endpoints — throws on non-ok response
+async function tiktokInitFetch(url, token, body) {
+  const res  = await fetch(url, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
+    body:    JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error?.code !== 'ok') {
+    const err = new Error(data.error?.message ?? 'TikTok init failed');
+    err.code  = data.error?.code ?? 'unknown';
+    err.http  = res.status;
+    err.raw   = data;
+    throw err;
+  }
+  return data;
+}
+
 async function getApiKeySession(c) {
   const auth = c.req.header('Authorization') ?? '';
   if (!auth.startsWith('Bearer cp_')) return null;
@@ -411,15 +487,15 @@ app.post('/api/youtube/upload-session', async (c) => {
     return c.json({ error: 'Account not found' }, 404);
   }
 
-  // Refresh access token if expired
-  let accessToken = account.access_token;
+  // Pre-refresh token if it's close to expiry (YouTube tokens expire in 1 hour)
+  let ytToken = account.access_token;
   if (account.token_expires_at && account.token_expires_at < now() + 60) {
     try {
       const refreshed = await refreshGoogleToken(account.refresh_token, c.env);
-      accessToken     = refreshed.access_token;
+      ytToken         = refreshed.access_token;
       await c.env.DB.prepare(
         'UPDATE connected_accounts SET access_token = ?, token_expires_at = ? WHERE id = ?'
-      ).bind(accessToken, now() + refreshed.expires_in, account_id).run();
+      ).bind(ytToken, now() + refreshed.expires_in, account_id).run();
     } catch (err) {
       log(c, { type: 'error', event: 'youtube_token_refresh_failed', message: err.message, account_id });
       return c.json({ error: 'token_revoked' }, 401);
@@ -433,42 +509,74 @@ app.post('/api/youtube/upload-session', async (c) => {
       categoryId:  '22',
     },
     status: {
-      privacyStatus:              privacy_status,
-      selfDeclaredMadeForKids:    false,
+      privacyStatus:           privacy_status,
+      selfDeclaredMadeForKids: false,
     },
   };
 
   const origin = new URL(c.req.url).origin;
-  const initRes = await fetch(
-    'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
-    {
-      method:  'POST',
-      headers: {
-        'Authorization':           `Bearer ${accessToken}`,
-        'Content-Type':            'application/json; charset=UTF-8',
-        'X-Upload-Content-Length': String(file_size),
-        'X-Upload-Content-Type':   mime_type,
-        'Origin':                  origin,
-      },
-      body: JSON.stringify(metadata),
-    }
-  );
 
-  if (!initRes.ok) {
-    const errText = await initRes.text();
-    log(c, { type: 'error', event: 'youtube_upload_failed', reason: 'init_failed', status: initRes.status, message: errText, user_id: session.user_id });
-    if (initRes.status === 401) return c.json({ error: 'token_revoked' }, 401);
+  // Init resumable upload session — up to 3 attempts; refresh token on 401 before retry
+  let ytAttempts = 0;
+  let uploadUrl;
+  try {
+    uploadUrl = await withRetry(async (attempt) => {
+      ytAttempts = attempt;
+      const initRes = await fetch(
+        'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+        {
+          method:  'POST',
+          headers: {
+            'Authorization':           `Bearer ${ytToken}`,
+            'Content-Type':            'application/json; charset=UTF-8',
+            'X-Upload-Content-Length': String(file_size),
+            'X-Upload-Content-Type':   mime_type,
+            'Origin':                  origin,
+          },
+          body: JSON.stringify(metadata),
+        }
+      );
+      if (!initRes.ok) {
+        const err = new Error(`YouTube init failed: ${initRes.status}`);
+        err.status = initRes.status;
+        throw err;
+      }
+      return initRes.headers.get('Location');
+    }, {
+      retryable: isYouTubeRetryable,
+      onRetry: async (err) => {
+        if (err.status === 401) {
+          // Token expired mid-flight — refresh before next attempt
+          try {
+            const refreshed = await refreshGoogleToken(account.refresh_token, c.env);
+            ytToken         = refreshed.access_token;
+            await c.env.DB.prepare('UPDATE connected_accounts SET access_token = ?, token_expires_at = ? WHERE id = ?')
+              .bind(ytToken, now() + refreshed.expires_in, account_id).run();
+          } catch { /* refresh failed — next attempt will 401 again and isYouTubeRetryable will stop it */ }
+        }
+      },
+    });
+  } catch (err) {
+    log(c, { type: 'error', event: 'youtube_upload_failed', reason: 'init_failed', status: err.status, attempts: ytAttempts, user_id: session.user_id });
+    // Save a failed post record so the user sees it in the dashboard
+    const failedId = newId();
+    c.executionCtx.waitUntil(
+      c.env.DB.prepare(`
+        INSERT INTO posts (id, user_id, account_id, platform, caption, status, created_at, retry_count, last_error)
+        VALUES (?, ?, ?, 'youtube', ?, 'failed', ?, ?, ?)
+      `).bind(failedId, session.user_id, account_id, title, now(), ytAttempts - 1, err.message ?? 'YouTube init failed').run()
+    );
+    c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'YouTube', event: 'upload_init_failed', account_name: account.display_name, post_id: failedId, error_code: String(err.status), attempts: ytAttempts }));
+    if (err.status === 401) return c.json({ error: 'token_revoked' }, 401);
     return c.json({ error: 'Failed to initialize YouTube upload' }, 500);
   }
-
-  const uploadUrl = initRes.headers.get('Location');
 
   // Save post record
   const postId = newId();
   await c.env.DB.prepare(`
-    INSERT INTO posts (id, user_id, account_id, platform, caption, status, created_at)
-    VALUES (?, ?, ?, 'youtube', ?, 'processing', ?)
-  `).bind(postId, session.user_id, account_id, title, now()).run();
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, created_at, retry_count)
+    VALUES (?, ?, ?, 'youtube', ?, 'processing', ?, ?)
+  `).bind(postId, session.user_id, account_id, title, now(), ytAttempts - 1).run();
 
   log(c, { type: 'event', event: 'youtube_upload_initiated', user_id: session.user_id, account_id, post_id: postId });
   return c.json({ upload_url: uploadUrl, post_id: postId });
@@ -552,63 +660,54 @@ app.post('/api/instagram/upload', async (c) => {
   // Opportunistic cleanup of expired temp videos
   c.executionCtx.waitUntil(cleanupExpiredR2(c.env.MEDIA_BUCKET));
 
-  // Step 1: Upload video to R2 for temporary hosting
-  const r2Key     = `ig-temp/${newId()}/${videoFile.name || 'video.mp4'}`;
-  const cleanupAt = String(Date.now() + 24 * 60 * 60 * 1000); // 24h TTL
-
-  try {
-    await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
-      httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
-      customMetadata: { cleanup_at: cleanupAt },
-    });
-  } catch (err) {
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'r2_put_failed', message: err.message, user_id: session.user_id });
-    return c.json({ error: 'Failed to store video for upload' }, 500);
-  }
-
-  const videoUrl = `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
-
-  // Step 2: Create Reels container with video_url
+  // Upload to R2 then create Reels container — up to 3 total attempts
   // NOTE: video_url is the only supported method for Instagram Login tokens.
   // Must use form-encoded body (not JSON) — confirmed from working reference implementation.
-  const initParams = new URLSearchParams({
-    media_type:    'REELS',
-    video_url:     videoUrl,
-    caption,
-    share_to_feed: 'true',
-    access_token:  accessToken,
-  });
-  const initRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:   initParams.toString(),
-  });
-
-  if (!initRes.ok) {
-    const errText = await initRes.text();
-    c.executionCtx.waitUntil(c.env.MEDIA_BUCKET.delete(r2Key));
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_failed', status: initRes.status, message: errText, ig_user_id: igUserId, user_id: session.user_id });
-    return c.json({ error: 'Failed to initialize Instagram upload' }, 500);
+  let igAttempts = 0, finalR2Key = null;
+  let containerId;
+  try {
+    const result = await withRetry(async (attempt) => {
+      igAttempts = attempt;
+      // Fresh R2 key per attempt so retries don't collide
+      const r2Key = `ig-temp/${newId()}/${videoFile.name || 'video.mp4'}`;
+      await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
+        httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
+        customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
+      });
+      const videoUrl   = `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
+      const initParams = new URLSearchParams({
+        media_type: 'REELS', video_url: videoUrl, caption, share_to_feed: 'true', access_token: accessToken,
+      });
+      const initRes  = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: initParams.toString(),
+      });
+      const initData = await initRes.json();
+      if (!initRes.ok || initData.error) {
+        c.executionCtx.waitUntil(c.env.MEDIA_BUCKET.delete(r2Key));
+        const err = new Error(initData.error?.message ?? 'Instagram container init failed');
+        err.code  = initData.error?.code;
+        err.http  = initRes.status;
+        throw err;
+      }
+      return { containerId: initData.id, r2Key };
+    }, { retryable: isIgRetryable });
+    containerId = result.containerId;
+    finalR2Key  = result.r2Key;
+  } catch (err) {
+    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_failed', message: err.message, code: err.code, ig_user_id: igUserId, attempts: igAttempts, user_id: session.user_id });
+    c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'Instagram', event: 'upload_init_failed', account_name: account.display_name, error_code: String(err.code), attempts: igAttempts }));
+    return c.json({ error: err.message ?? 'Failed to initialize Instagram upload' }, 500);
   }
-
-  const initData = await initRes.json();
-  if (initData.error) {
-    c.executionCtx.waitUntil(c.env.MEDIA_BUCKET.delete(r2Key));
-    log(c, { type: 'error', event: 'instagram_upload_failed', reason: 'container_init_api_error', message: initData.error.message, code: initData.error.code, ig_user_id: igUserId, user_id: session.user_id });
-    return c.json({ error: initData.error.message ?? 'Instagram init failed' }, 500);
-  }
-
-  const containerId = initData.id;
 
   // Save post record
   const postId = newId();
   await c.env.DB.prepare(`
-    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
-    VALUES (?, ?, ?, 'instagram', ?, 'processing', ?, ?)
-  `).bind(postId, session.user_id, accountId, caption, containerId, now()).run();
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at, retry_count)
+    VALUES (?, ?, ?, 'instagram', ?, 'processing', ?, ?, ?)
+  `).bind(postId, session.user_id, accountId, caption, containerId, now(), igAttempts - 1).run();
 
   log(c, { type: 'event', event: 'instagram_upload_initiated', user_id: session.user_id, account_id: accountId, post_id: postId, container_id: containerId });
-  return c.json({ container_id: containerId, post_id: postId, r2_key: r2Key });
+  return c.json({ container_id: containerId, post_id: postId, r2_key: finalR2Key });
 });
 
 app.get('/api/instagram/status', async (c) => {
@@ -644,20 +743,35 @@ app.post('/api/instagram/publish', async (c) => {
 
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
-  const publishParams = new URLSearchParams({
-    creation_id:  container_id,
-    access_token: account.access_token,
-  });
-  const res  = await fetch(`${IG_GRAPH}/${account.platform_user_id}/media_publish`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:   publishParams.toString(),
-  });
-  const data = await res.json();
-
-  if (!res.ok || data.error) {
-    log(c, { type: 'error', event: 'instagram_publish_failed', message: data.error?.message, code: data.error?.code, user_id: session.user_id, account_id });
-    return c.json({ error: data.error?.message ?? 'Failed to publish' }, 500);
+  let igPublishAttempts = 0;
+  let mediaId;
+  try {
+    mediaId = await withRetry(async (attempt) => {
+      igPublishAttempts = attempt;
+      const publishParams = new URLSearchParams({ creation_id: container_id, access_token: account.access_token });
+      const res  = await fetch(`${IG_GRAPH}/${account.platform_user_id}/media_publish`, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: publishParams.toString(),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        const err = new Error(data.error?.message ?? 'Instagram media_publish failed');
+        err.code  = data.error?.code;
+        err.http  = res.status;
+        throw err;
+      }
+      return data.id;
+    }, { retryable: isIgRetryable });
+  } catch (err) {
+    log(c, { type: 'error', event: 'instagram_publish_failed', message: err.message, code: err.code, attempts: igPublishAttempts, user_id: session.user_id, account_id });
+    // Fix: update post to 'failed' so it shows in dashboard
+    if (post_id) {
+      c.executionCtx.waitUntil(
+        c.env.DB.prepare('UPDATE posts SET status = ?, last_error = ?, retry_count = ? WHERE id = ? AND user_id = ?')
+          .bind('failed', err.message ?? 'media_publish failed', igPublishAttempts - 1, post_id, session.user_id).run()
+      );
+    }
+    c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'Instagram', event: 'media_publish_failed', account_name: account.display_name, post_id: post_id ?? null, error_code: String(err.code), attempts: igPublishAttempts }));
+    return c.json({ error: err.message ?? 'Failed to publish' }, 500);
   }
 
   // Clean up temp R2 video now that it's been ingested by Instagram
@@ -667,11 +781,11 @@ app.post('/api/instagram/publish', async (c) => {
 
   if (post_id) {
     await c.env.DB.prepare('UPDATE posts SET status = ?, publish_id = ? WHERE id = ? AND user_id = ?')
-      .bind('published', data.id ?? container_id, post_id, session.user_id).run();
+      .bind('published', mediaId ?? container_id, post_id, session.user_id).run();
   }
 
-  log(c, { type: 'event', event: 'instagram_published', user_id: session.user_id, account_id, media_id: data.id, post_id: post_id ?? null });
-  return c.json({ ok: true, media_id: data.id, post_id });
+  log(c, { type: 'event', event: 'instagram_published', user_id: session.user_id, account_id, media_id: mediaId, post_id: post_id ?? null });
+  return c.json({ ok: true, media_id: mediaId, post_id });
 });
 
 // ── TikTok OAuth ──────────────────────────────────────────────────────────────
@@ -919,48 +1033,55 @@ app.post('/api/publish', async (c) => {
     postInfo.scheduled_publish_time = Math.floor(new Date(scheduleTime).getTime() / 1000);
   }
 
-  // Try direct post, fall back to inbox
-  let initRes = await fetch(TIKTOK_INIT_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-    body: JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
-  });
-  let initData  = await initRes.json();
-  let usedInbox = false;
-
-  if (!initRes.ok || initData.error?.code !== 'ok') {
-    initRes   = await fetch(TIKTOK_INBOX_INIT_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-      body: JSON.stringify({ source_info: sourceInfo }),
-    });
-    initData  = await initRes.json();
-    usedInbox = true;
-  }
-
-  if (!initRes.ok || initData.error?.code !== 'ok') {
-    const tiktokCode = initData.error?.code;
-    const isTokenError = initRes.status === 401 || ['access_token_invalid', 'access_token_expired'].includes(tiktokCode);
-    log(c, { type: 'error', event: 'publish_failed', reason: isTokenError ? 'token_revoked' : 'tiktok_init_failed', tiktok_error: tiktokCode, tiktok_message: initData.error?.message, user_id: session.user_id, account_id: accountId });
+  // Try direct post, fall back to inbox — up to 3 total attempts
+  let usedInbox = false, initAttempts = 0;
+  let publish_id, upload_url;
+  try {
+    const initResult = await withRetry(async (attempt) => {
+      initAttempts = attempt;
+      try {
+        const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token,
+          { post_info: postInfo, source_info: sourceInfo });
+        return { data, inbox: false };
+      } catch {
+        // Direct post failed — fall back to inbox on this attempt
+        const data = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token,
+          { source_info: sourceInfo });
+        return { data, inbox: true };
+      }
+    }, { retryable: isTiktokRetryable });
+    usedInbox  = initResult.inbox;
+    publish_id = initResult.data.data.publish_id;
+    upload_url = initResult.data.data.upload_url;
+  } catch (err) {
+    const isTokenError = err.http === 401 || ['access_token_invalid', 'access_token_expired'].includes(err.code);
+    log(c, { type: 'error', event: 'publish_failed', reason: isTokenError ? 'token_revoked' : 'tiktok_init_failed', tiktok_error: err.code, tiktok_message: err.message, attempts: initAttempts, user_id: session.user_id, account_id: accountId });
+    if (!isTokenError) c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'TikTok', event: 'publish_init_failed', account_name: account.display_name, error_code: err.code, attempts: initAttempts }));
     if (isTokenError) return c.json({ error: 'token_revoked', account_id: accountId }, 401);
-    return c.json({ error: initData.error?.message ?? 'Failed to initialize upload', tiktok_raw: initData }, 500);
+    return c.json({ error: err.message ?? 'Failed to initialize upload' }, 500);
   }
-
-  const { publish_id, upload_url } = initData.data;
 
   if (!hasUrl && upload_url) {
-    const uploadRes = await fetch(upload_url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'video/mp4',
-        'Content-Range': `bytes 0-${videoSize - 1}/${videoSize}`,
-        'Content-Length': String(videoSize),
-      },
-      body: videoBytes,
-    });
-
-    if (!uploadRes.ok) {
-      log(c, { type: 'error', event: 'publish_failed', reason: 'upload_put_failed', upload_status: uploadRes.status, user_id: session.user_id, account_id: accountId });
+    try {
+      await withRetry(async () => {
+        const uploadRes = await fetch(upload_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type':   'video/mp4',
+            'Content-Range':  `bytes 0-${videoSize - 1}/${videoSize}`,
+            'Content-Length': String(videoSize),
+          },
+          body: videoBytes,
+        });
+        if (!uploadRes.ok) {
+          const putErr = new Error(`PUT failed: ${uploadRes.status}`);
+          putErr.status = uploadRes.status;
+          throw putErr;
+        }
+      }, { retryable: () => true });
+    } catch (err) {
+      log(c, { type: 'error', event: 'publish_failed', reason: 'upload_put_failed', upload_status: err.status, attempts: 3, user_id: session.user_id, account_id: accountId });
+      c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'TikTok', event: 'upload_put_failed', account_name: account.display_name, error_code: String(err.status), attempts: 3 }));
       return c.json({ error: 'Video upload failed' }, 500);
     }
   }
@@ -968,14 +1089,15 @@ app.post('/api/publish', async (c) => {
   // Save post to DB
   const postId = newId();
   await c.env.DB.prepare(`
-    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, scheduled_at, created_at)
-    VALUES (?, ?, ?, 'tiktok', ?, ?, ?, ?, ?)
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, scheduled_at, created_at, retry_count)
+    VALUES (?, ?, ?, 'tiktok', ?, ?, ?, ?, ?, ?)
   `).bind(
     postId, session.user_id, accountId, caption,
     scheduleTime ? 'scheduled' : 'processing',
     publish_id,
     scheduleTime ? Math.floor(new Date(scheduleTime).getTime() / 1000) : null,
-    now()
+    now(),
+    initAttempts - 1,
   ).run();
 
   return c.json({ publish_id, post_id: postId, scheduled: !!scheduleTime, inbox: usedInbox });
@@ -1849,81 +1971,94 @@ app.post('/api/v1/publish', async (c) => {
     video_cover_timestamp_ms: (coverTimestampMs !== null && !isNaN(coverTimestampMs)) ? coverTimestampMs : 1000,
   };
 
-  // Try FILE_UPLOAD first (TikTok processes faster than PULL_FROM_URL).
-  // Falls back to PULL_FROM_URL via R2 if TikTok rejects the FILE_UPLOAD init.
-  let sourceInfo = hasFile
-    ? { source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1 }
-    : { source: 'PULL_FROM_URL', video_url: videoUrl };
-
-  let initRes  = await fetch(TIKTOK_INIT_URL, {
-    method:  'POST',
-    headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-    body:    JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
-  });
-  let initData = await initRes.json();
-
-  // FILE_UPLOAD init failed — fall back to PULL_FROM_URL via R2
-  if (hasFile && sourceInfo.source === 'FILE_UPLOAD' && (!initRes.ok || initData.error?.code !== 'ok')) {
-    log(c, { type: 'event', event: 'api_publish_file_upload_fallback', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id });
-    const r2Key  = `api-uploads/${newId()}/${videoFile.name || 'video.mp4'}`;
-    await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
-      httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
-      customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
-    });
-    sourceInfo = { source: 'PULL_FROM_URL', video_url: `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}` };
-    initRes    = await fetch(TIKTOK_INIT_URL, {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-      body:    JSON.stringify({ post_info: postInfo, source_info: sourceInfo }),
-    });
-    initData   = await initRes.json();
+  // Try FILE_UPLOAD → PULL_FROM_URL via R2 → inbox, up to 3 total attempts per step
+  let usedInbox = false, initAttempts = 0, finalSourceInfo = null;
+  let publish_id, upload_url;
+  try {
+    const initResult = await withRetry(async (attempt) => {
+      initAttempts = attempt;
+      if (hasFile) {
+        // Step 1: Try FILE_UPLOAD direct
+        try {
+          const si   = { source: 'FILE_UPLOAD', video_size: videoSize, chunk_size: videoSize, total_chunk_count: 1 };
+          const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si });
+          return { data, inbox: false, sourceInfo: si };
+        } catch (fileErr) {
+          // FILE_UPLOAD init failed — upload to R2 and retry via PULL_FROM_URL
+          log(c, { type: 'event', event: 'api_publish_file_upload_fallback', tiktok_error: fileErr.code, user_id: session.user_id });
+          const r2Key = `api-uploads/${newId()}/${videoFile.name || 'video.mp4'}`;
+          await c.env.MEDIA_BUCKET.put(r2Key, videoBytes, {
+            httpMetadata:   { contentType: videoFile.type || 'video/mp4' },
+            customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
+          });
+          const si = { source: 'PULL_FROM_URL', video_url: `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}` };
+          try {
+            const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si });
+            return { data, inbox: false, sourceInfo: si };
+          } catch {
+            // R2/direct also failed — fall back to inbox
+            const data = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token, { source_info: si });
+            return { data, inbox: true, sourceInfo: si };
+          }
+        }
+      } else {
+        // URL-only: try direct, then inbox
+        const si = { source: 'PULL_FROM_URL', video_url: videoUrl };
+        try {
+          const data = await tiktokInitFetch(TIKTOK_INIT_URL, account.access_token, { post_info: postInfo, source_info: si });
+          return { data, inbox: false, sourceInfo: si };
+        } catch {
+          const data = await tiktokInitFetch(TIKTOK_INBOX_INIT_URL, account.access_token, { source_info: si });
+          return { data, inbox: true, sourceInfo: si };
+        }
+      }
+    }, { retryable: isTiktokRetryable });
+    usedInbox       = initResult.inbox;
+    publish_id      = initResult.data.data.publish_id;
+    upload_url      = initResult.data.data.upload_url;
+    finalSourceInfo = initResult.sourceInfo;
+  } catch (err) {
+    const tiktokCode = err.code;
+    log(c, { type: 'error', event: 'api_publish_failed', platform, tiktok_error: tiktokCode, tiktok_message: err.message, attempts: initAttempts, user_id: session.user_id });
+    c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'TikTok', event: 'api_publish_init_failed', account_name: account.display_name, error_code: tiktokCode, attempts: initAttempts }));
+    return c.json({ error: err.message ?? 'TikTok init failed' }, 500);
   }
-
-  let usedInbox = false;
-  if (!initRes.ok || initData.error?.code !== 'ok') {
-    initRes = await fetch(TIKTOK_INBOX_INIT_URL, {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-      body:    JSON.stringify({ source_info: sourceInfo }),
-    });
-    initData  = await initRes.json();
-    usedInbox = true;
-  }
-
-  if (!initRes.ok || initData.error?.code !== 'ok') {
-    const tiktokCode = initData.error?.code;
-    log(c, { type: 'error', event: 'api_publish_failed', platform, tiktok_error: tiktokCode, user_id: session.user_id });
-    return c.json({ error: initData.error?.message ?? 'TikTok init failed', tiktok_raw: initData }, 500);
-  }
-
-  const { publish_id, upload_url } = initData.data;
 
   // PUT video bytes directly to TikTok for FILE_UPLOAD
-  if (sourceInfo.source === 'FILE_UPLOAD' && upload_url) {
-    const uploadRes = await fetch(upload_url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type':   videoFile.type || 'video/mp4',
-        'Content-Range':  `bytes 0-${videoSize - 1}/${videoSize}`,
-        'Content-Length': String(videoSize),
-      },
-      body: videoBytes,
-    });
-    if (!uploadRes.ok) {
-      log(c, { type: 'error', event: 'api_publish_failed', reason: 'upload_put_failed', upload_status: uploadRes.status, user_id: session.user_id });
+  if (finalSourceInfo.source === 'FILE_UPLOAD' && upload_url) {
+    try {
+      await withRetry(async () => {
+        const uploadRes = await fetch(upload_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type':   videoFile.type || 'video/mp4',
+            'Content-Range':  `bytes 0-${videoSize - 1}/${videoSize}`,
+            'Content-Length': String(videoSize),
+          },
+          body: videoBytes,
+        });
+        if (!uploadRes.ok) {
+          const putErr = new Error(`PUT failed: ${uploadRes.status}`);
+          putErr.status = uploadRes.status;
+          throw putErr;
+        }
+      }, { retryable: () => true });
+    } catch (err) {
+      log(c, { type: 'error', event: 'api_publish_failed', reason: 'upload_put_failed', upload_status: err.status, attempts: 3, user_id: session.user_id });
+      c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'TikTok', event: 'api_upload_put_failed', account_name: account.display_name, error_code: String(err.status), attempts: 3 }));
       return c.json({ error: 'Video upload to TikTok failed' }, 500);
     }
   }
 
   const postId = newId();
   await c.env.DB.prepare(`
-    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
-    VALUES (?, ?, ?, ?, ?, 'processing', ?, ?)
-  `).bind(postId, session.user_id, account.id, platform, caption, publish_id, now()).run();
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at, retry_count)
+    VALUES (?, ?, ?, ?, ?, 'processing', ?, ?, ?)
+  `).bind(postId, session.user_id, account.id, platform, caption, publish_id, now(), initAttempts - 1).run();
 
-  log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox, source: sourceInfo.source });
+  log(c, { type: 'event', event: 'api_publish', platform, account_id: account.id, user_id: session.user_id, inbox: usedInbox, source: finalSourceInfo.source });
 
-  return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: sourceInfo.source });
+  return c.json({ publish_id, post_id: postId, inbox: usedInbox, source: finalSourceInfo.source });
 });
 
 // POST /api/v1/publish/photo — publish a photo carousel to TikTok
@@ -1943,26 +2078,6 @@ app.post('/api/v1/publish/photo', async (c) => {
   ).bind(account_id, session.user_id, 'tiktok').first();
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
-  // Proxy any images not hosted on creatorpost.app through R2
-  // (TikTok requires domain verification for PULL_FROM_URL — creatorpost.app is already verified)
-  // NOTE: TikTok photo carousels only reliably accept JPEG. PNG is documented as supported
-  // but the API returns file_format_check_failed in practice. Pipeline should send JPEGs.
-  const finalImages = await Promise.all(images.map(async (url) => {
-    try {
-      if (new URL(url).hostname.endsWith('creatorpost.app')) return url;
-    } catch { /* invalid URL — let TikTok reject it */ return url; }
-    const imgRes  = await fetch(url);
-    if (!imgRes.ok) throw new Error(`Failed to fetch image ${url}: ${imgRes.status}`);
-    const imgBuf  = await imgRes.arrayBuffer();
-    const ext     = url.split('?')[0].split('.').pop() || 'jpg';
-    const r2Key   = `photo-uploads/${newId()}.${ext}`;
-    await c.env.MEDIA_BUCKET.put(r2Key, imgBuf, {
-      httpMetadata:   { contentType: imgRes.headers.get('content-type') || 'image/jpeg' },
-      customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
-    });
-    return `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
-  }));
-
   const post_info = {
     description:     caption.slice(0, 4000),  // photo posts use description (max 4000), not title (max 90)
     privacy_level:   'PUBLIC_TO_EVERYONE',
@@ -1971,46 +2086,60 @@ app.post('/api/v1/publish/photo', async (c) => {
     ...(music_id ? { music_id: String(music_id) } : {}),
   };
 
-  const source_info = {
-    source:            'PULL_FROM_URL',
-    photo_cover_index: 0,
-    photo_images:      finalImages,
-  };
+  // Proxy images + init carousel — up to 3 total attempts
+  // NOTE: TikTok photo carousels only reliably accept JPEG. PNG returns file_format_check_failed.
+  // (TikTok requires domain verification for PULL_FROM_URL — creatorpost.app is already verified)
+  let usedInbox = false, photoAttempts = 0;
+  let publish_id;
+  try {
+    const initResult = await withRetry(async (attempt) => {
+      photoAttempts = attempt;
+      // Proxy any images not on creatorpost.app through R2 (fresh keys each attempt)
+      const proxied = await Promise.all(images.map(async (url) => {
+        try {
+          if (new URL(url).hostname.endsWith('creatorpost.app')) return url;
+        } catch { return url; }
+        const imgRes = await fetch(url);
+        if (!imgRes.ok) throw new Error(`Failed to fetch image ${url}: ${imgRes.status}`);
+        const imgBuf = await imgRes.arrayBuffer();
+        const ext    = url.split('?')[0].split('.').pop() || 'jpg';
+        const r2Key  = `photo-uploads/${newId()}.${ext}`;
+        await c.env.MEDIA_BUCKET.put(r2Key, imgBuf, {
+          httpMetadata:   { contentType: imgRes.headers.get('content-type') || 'image/jpeg' },
+          customMetadata: { cleanup_at: String(Date.now() + 24 * 60 * 60 * 1000) },
+        });
+        return `${c.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${r2Key}`;
+      }));
 
-  // Try DIRECT_POST first — falls back to MEDIA_UPLOAD (inbox) if not approved yet
-  let initRes  = await fetch(TIKTOK_PHOTO_INIT_URL, {
-    method:  'POST',
-    headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-    body:    JSON.stringify({ post_info, source_info, media_type: 'PHOTO', post_mode: 'DIRECT_POST' }),
-  });
-  let initData  = await initRes.json();
-  let usedInbox = false;
+      const source_info = { source: 'PULL_FROM_URL', photo_cover_index: 0, photo_images: proxied };
 
-  if (!initRes.ok || initData.error?.code !== 'ok') {
-    log(c, { type: 'event', event: 'api_publish_photo_direct_post_failed', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id });
-    // auto_add_music is DIRECT_POST only — strip it for MEDIA_UPLOAD fallback
-    const { auto_add_music: _, ...post_info_inbox } = post_info;
-    initRes   = await fetch(TIKTOK_PHOTO_INIT_URL, {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json; charset=UTF-8' },
-      body:    JSON.stringify({ post_info: post_info_inbox, source_info, media_type: 'PHOTO', post_mode: 'MEDIA_UPLOAD' }),
-    });
-    initData  = await initRes.json();
-    usedInbox = true;
+      // Try DIRECT_POST first — falls back to MEDIA_UPLOAD (inbox) if not approved yet
+      try {
+        const data = await tiktokInitFetch(TIKTOK_PHOTO_INIT_URL, account.access_token,
+          { post_info, source_info, media_type: 'PHOTO', post_mode: 'DIRECT_POST' });
+        return { data, inbox: false };
+      } catch (directErr) {
+        log(c, { type: 'event', event: 'api_publish_photo_direct_post_failed', tiktok_error: directErr.code, tiktok_message: directErr.message, user_id: session.user_id });
+        // auto_add_music is DIRECT_POST only — strip it for MEDIA_UPLOAD fallback
+        const { auto_add_music: _, ...post_info_inbox } = post_info;
+        const data = await tiktokInitFetch(TIKTOK_PHOTO_INIT_URL, account.access_token,
+          { post_info: post_info_inbox, source_info, media_type: 'PHOTO', post_mode: 'MEDIA_UPLOAD' });
+        return { data, inbox: true };
+      }
+    }, { retryable: isTiktokRetryable });
+    usedInbox  = initResult.inbox;
+    publish_id = initResult.data.data.publish_id;
+  } catch (err) {
+    log(c, { type: 'error', event: 'api_publish_photo_failed', tiktok_error: err.code, tiktok_message: err.message, attempts: photoAttempts, user_id: session.user_id });
+    c.executionCtx.waitUntil(sendDiscordAlert(c, { platform: 'TikTok', event: 'api_publish_photo_failed', account_name: account.display_name, error_code: err.code, attempts: photoAttempts }));
+    return c.json({ error: err.message ?? 'TikTok photo init failed' }, 500);
   }
-
-  if (!initRes.ok || initData.error?.code !== 'ok') {
-    log(c, { type: 'error', event: 'api_publish_photo_failed', tiktok_error: initData.error?.code, tiktok_message: initData.error?.message, user_id: session.user_id });
-    return c.json({ error: initData.error?.message ?? 'TikTok photo init failed', tiktok_raw: initData }, 500);
-  }
-
-  const { publish_id } = initData.data;
 
   const postId = newId();
   await c.env.DB.prepare(`
-    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at)
-    VALUES (?, ?, ?, 'tiktok', ?, 'processing', ?, ?)
-  `).bind(postId, session.user_id, account.id, caption.slice(0, 2200), publish_id, now()).run();
+    INSERT INTO posts (id, user_id, account_id, platform, caption, status, publish_id, created_at, retry_count)
+    VALUES (?, ?, ?, 'tiktok', ?, 'processing', ?, ?, ?)
+  `).bind(postId, session.user_id, account.id, caption.slice(0, 2200), publish_id, now(), photoAttempts - 1).run();
 
   log(c, { type: 'event', event: 'api_publish_photo', account_id: account.id, user_id: session.user_id, image_count: images.length, inbox: usedInbox });
 

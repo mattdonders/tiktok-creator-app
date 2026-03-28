@@ -42,13 +42,19 @@ CREATE TABLE IF NOT EXISTS posts (
   account_id   TEXT    NOT NULL REFERENCES connected_accounts(id),
   platform     TEXT    NOT NULL,
   caption      TEXT,
-  status       TEXT    NOT NULL DEFAULT 'processing',  -- processing | scheduled | published | failed
+  status       TEXT    NOT NULL DEFAULT 'processing',  -- processing | scheduled | published | failed | inbox
   publish_id   TEXT,
   scheduled_at       INTEGER,
   created_at         INTEGER NOT NULL,
   video_id           TEXT,
-  tiktok_create_time INTEGER
+  tiktok_create_time INTEGER,
+  retry_count        INTEGER NOT NULL DEFAULT 0,  -- number of retries before success/failure (0 = first attempt worked)
+  last_error         TEXT                         -- last error message, set on permanent failure
 );
+
+-- Migrations applied to live D1 (2026-03-28) — already reflected above:
+-- ALTER TABLE posts ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
+-- ALTER TABLE posts ADD COLUMN last_error TEXT;
 
 CREATE TABLE IF NOT EXISTS api_keys (
   id           TEXT    PRIMARY KEY,
