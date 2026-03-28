@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>(function(){var t=localStorage.getItem('creatorpost-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})()</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Account — CreatorPost</title>
   <link rel="stylesheet" href="/styles.css" />
@@ -68,9 +69,9 @@
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
-      background: rgba(124,58,237,0.15);
+      background: var(--accent-soft);
       color: var(--accent-light);
-      border: 1px solid rgba(124,58,237,0.3);
+      border: 1px solid var(--accent-ring);
       border-radius: 6px;
       padding: 0.35rem 0.75rem;
       font-size: 0.8rem;
@@ -148,7 +149,7 @@
       background: var(--surface);
       outline: none;
     }
-    .group-input::placeholder { color: rgba(255,255,255,0.2); }
+    .group-input::placeholder { color: var(--muted); opacity: 0.6; }
 
     .status-msg {
       font-size: 0.85rem;
@@ -157,8 +158,8 @@
       margin-top: 1rem;
       display: none;
     }
-    .status-msg.success { background: rgba(74,222,128,0.1); color: #4ade80; display: block; }
-    .status-msg.error   { background: rgba(248,113,113,0.1); color: #f87171; display: block; }
+    .status-msg.success { background: var(--status-published-bg); color: var(--status-published-fg); display: block; }
+    .status-msg.error   { background: var(--status-failed-bg);    color: var(--status-failed-fg);    display: block; }
   </style>
 </head>
 <body>
@@ -173,8 +174,14 @@
       <li><a href="/dashboard">Dashboard</a></li>
       <li><a href="/posts">Posts</a></li>
     </ul>
-    <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem;">
-      <span style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle light/dark theme">
+        <svg id="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem;">
+        <span style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+      </div>
     </div>
   </nav>
 
@@ -227,8 +234,8 @@
           <button id="sync-all-btn" onclick="syncAllPosts()" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;display:none">Sync All</button>
           <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem"
             title="TikTok connects whichever account is active in the TikTok app. Switch accounts in TikTok first if needed.">+ TikTok</a>
-          <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
-          <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#e1306c;border-color:rgba(225,48,108,0.4)">+ Instagram</a>
+          <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:var(--color-youtube);border-color:var(--bg-youtube)">+ YouTube</a>
+          <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:var(--color-instagram);border-color:var(--bg-instagram)">+ Instagram</a>
         </div>
         <div style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;width:100%">
           Tip: TikTok connects whichever account is logged into TikTok.com in your browser — not the TikTok app. To connect a different account, log out of tiktok.com in your browser first, then click + TikTok.
@@ -284,7 +291,7 @@
     </div>
 
     <!-- Danger zone -->
-    <div class="profile-card" style="border-color:rgba(248,113,113,0.3)">
+    <div class="profile-card" style="border-color:var(--status-failed-bg)">
       <div class="card-section-title" style="color:#f87171">Danger zone</div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
         <div>
@@ -314,8 +321,8 @@
     }
 
     const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
-    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)', instagram: 'rgba(225,48,108,0.15)' };
-    const PLATFORM_COLOR = { tiktok: '#ccc', youtube: '#ff6b6b', instagram: '#e1306c' };
+    const PLATFORM_BG    = { tiktok: 'var(--bg-tiktok)',    youtube: 'var(--bg-youtube)',    instagram: 'var(--bg-instagram)' };
+    const PLATFORM_COLOR = { tiktok: 'var(--color-tiktok)', youtube: 'var(--color-youtube)', instagram: 'var(--color-instagram)' };
 
     let user     = {};
     let accounts = [];
@@ -629,6 +636,22 @@
     loadProfile();
     loadApiKeys();
     loadHashtagSets();
+
+    // ── Theme toggle ──────────────────────────────────────────────────────────
+    function toggleTheme() {
+      const next = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('creatorpost-theme', next);
+      _syncThemeIcon();
+    }
+    function _syncThemeIcon() {
+      const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+      const sun  = document.getElementById('icon-sun');
+      const moon = document.getElementById('icon-moon');
+      if (sun)  sun.style.display  = isDark ? '' : 'none';
+      if (moon) moon.style.display = isDark ? 'none' : '';
+    }
+    document.addEventListener('DOMContentLoaded', _syncThemeIcon);
   </script>
 </body>
 </html>

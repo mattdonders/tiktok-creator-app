@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>(function(){var t=localStorage.getItem('creatorpost-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})()</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard — CreatorPost</title>
   <link rel="stylesheet" href="/styles.css" />
@@ -104,8 +105,8 @@
     }
     .drop-zone:hover, .drop-zone.dragover {
       border-color: var(--accent);
-      background: rgba(124,58,237,0.05);
-      box-shadow: 0 0 0 3px rgba(124,58,237,0.08);
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 3px var(--accent-ring);
     }
     .drop-zone input[type="file"] {
       position: absolute;
@@ -268,8 +269,8 @@
       color: var(--text) !important;
       margin-bottom: 0 !important;
     }
-    .account-check-row:hover { border-color: #333; }
-    .account-check-row.selected { border-color: var(--accent); background: rgba(124,58,237,0.06); }
+    .account-check-row:hover { border-color: var(--border-strong); }
+    .account-check-row.selected { border-color: var(--accent); background: var(--accent-soft); }
     .account-check-row input[type="checkbox"] {
       accent-color: var(--accent);
       width: 15px;
@@ -294,19 +295,19 @@
       padding: 0.75rem 1rem;
       border-radius: var(--radius);
       font-size: 0.875rem;
-      background: rgba(124,58,237,0.1);
-      border: 1px solid rgba(124,58,237,0.2);
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-ring);
       color: var(--accent-light);
     }
     .upload-status.success {
-      background: rgba(74,222,128,0.1);
-      border-color: rgba(74,222,128,0.2);
-      color: #4ade80;
+      background: var(--status-published-bg);
+      border-color: var(--status-published-bg);
+      color: var(--status-published-fg);
     }
     .upload-status.error {
-      background: rgba(248,113,113,0.1);
-      border-color: rgba(248,113,113,0.2);
-      color: #f87171;
+      background: var(--status-failed-bg);
+      border-color: var(--status-failed-bg);
+      color: var(--status-failed-fg);
     }
 
     /* ── Posts list ── */
@@ -357,11 +358,6 @@
       flex-shrink: 0;
       text-transform: capitalize;
     }
-    .post-status.published  { background: rgba(74,222,128,0.15); color: #4ade80; }
-    .post-status.scheduled  { background: rgba(124,58,237,0.15); color: var(--accent-light); }
-    .post-status.processing { background: rgba(251,191,36,0.15); color: #fbbf24; }
-    .post-status.failed     { background: rgba(248,113,113,0.15); color: #f87171; }
-    .post-status.inbox      { background: rgba(96,165,250,0.15); color: #60a5fa; }
 
     /* ── Stats ── */
     .stat-num {
@@ -401,7 +397,7 @@
       transform: translateY(0);
       opacity: 1;
     }
-    .toast.error { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .toast.error { color: var(--status-failed-fg); border-color: var(--status-failed-bg); }
 
     /* ── Video preview ── */
     .video-preview-wrap {
@@ -422,18 +418,18 @@
 
     /* ── TikTok settings panel ── */
     .tt-panel {
-      border: 1px solid rgba(255,255,255,0.1);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 1rem;
       margin-bottom: 1rem;
-      background: rgba(255,255,255,0.015);
+      background: var(--surface-alt);
     }
     .tt-panel-title {
       font-size: 0.72rem;
       font-weight: 700;
       letter-spacing: 0.07em;
       text-transform: uppercase;
-      color: #ccc;
+      color: var(--muted);
       margin-bottom: 0.9rem;
       display: flex;
       align-items: center;
@@ -483,7 +479,7 @@
       color: var(--muted);
       line-height: 1.5;
       padding: 0.65rem 0.85rem;
-      background: rgba(255,255,255,0.03);
+      background: var(--surface-alt);
       border: 1px solid var(--border);
       border-radius: 8px;
     }
@@ -503,8 +499,14 @@
       <li><a href="/dashboard" class="active">Dashboard</a></li>
       <li><a href="/posts">Posts</a></li>
     </ul>
-    <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem;">
-      <span style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle light/dark theme">
+        <svg id="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div id="nav-account" style="display:flex;align-items:center;gap:0.75rem;">
+        <span style="font-size:0.85rem;color:var(--muted)">Loading…</span>
+      </div>
     </div>
   </nav>
 
@@ -515,20 +517,20 @@
       <span id="accounts-bar-label" style="font-size:0.85rem;color:var(--muted)">Loading…</span>
       <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <a href="/auth/tiktok" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem">+ TikTok</a>
-        <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">+ YouTube</a>
-        <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:#e1306c;border-color:rgba(225,48,108,0.4)">+ Instagram</a>
+        <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:var(--color-youtube);border-color:var(--bg-youtube)">+ YouTube</a>
+        <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.75rem;padding:0.3rem 0.7rem;color:var(--color-instagram);border-color:var(--bg-instagram)">+ Instagram</a>
         <a href="/account" style="font-size:0.8rem;color:var(--muted);padding:0 0.25rem;white-space:nowrap">Manage →</a>
       </div>
     </div>
 
     <!-- ── First-time onboarding banner ── -->
-    <div id="onboarding-banner" style="display:none;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.25);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem">
+    <div id="onboarding-banner" style="display:none;background:var(--accent-soft);border:1px solid var(--accent-ring);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem">
       <div style="font-size:1rem;font-weight:700;margin-bottom:0.4rem">Connect an account to get started</div>
       <p style="font-size:0.875rem;color:var(--muted);margin:0 0 1rem;line-height:1.5">Connect your TikTok, YouTube, or Instagram account to start publishing videos from one dashboard.</p>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
         <a href="/auth/tiktok" class="btn btn-primary" style="font-size:0.85rem;padding:0.45rem 1rem">Connect TikTok</a>
-        <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.85rem;padding:0.45rem 1rem;color:#ff6b6b;border-color:rgba(255,107,107,0.4)">Connect YouTube</a>
-        <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.85rem;padding:0.45rem 1rem;color:#e1306c;border-color:rgba(225,48,108,0.4)">Connect Instagram</a>
+        <a href="/auth/youtube" class="btn btn-outline" style="font-size:0.85rem;padding:0.45rem 1rem;color:var(--color-youtube);border-color:var(--bg-youtube)">Connect YouTube</a>
+        <a href="/auth/instagram" class="btn btn-outline" style="font-size:0.85rem;padding:0.45rem 1rem;color:var(--color-instagram);border-color:var(--bg-instagram)">Connect Instagram</a>
       </div>
     </div>
 
@@ -913,8 +915,8 @@
     }
 
     const PLATFORM_LABEL = { tiktok: 'TikTok', youtube: 'YouTube', instagram: 'Instagram' };
-    const PLATFORM_BG    = { tiktok: 'rgba(255,255,255,0.08)', youtube: 'rgba(255,0,0,0.15)', instagram: 'rgba(225,48,108,0.15)' };
-    const PLATFORM_COLOR = { tiktok: '#ccc',   youtube: '#ff6b6b',  instagram: '#e1306c' };
+    const PLATFORM_BG    = { tiktok: 'var(--bg-tiktok)',    youtube: 'var(--bg-youtube)',    instagram: 'var(--bg-instagram)' };
+    const PLATFORM_COLOR = { tiktok: 'var(--color-tiktok)', youtube: 'var(--color-youtube)', instagram: 'var(--color-instagram)' };
     const PRIVACY_MAP    = {
       tiktok:    { public: 'PUBLIC_TO_EVERYONE', unlisted: 'SELF_ONLY', private: 'SELF_ONLY' },
       youtube:   { public: 'public',             unlisted: 'unlisted',  private: 'private'   },
@@ -963,7 +965,7 @@
           const id   = escHtml(acc.id ?? '');
           const expiresSoon = acc.token_expires_at && acc.token_expires_at < Math.floor(Date.now()/1000);
           const expiryBadge = expiresSoon
-            ? `<span title="Token expired — reconnect this account" style="font-size:0.68rem;background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:4px;padding:0.15rem 0.4rem;flex-shrink:0;cursor:default">⚠ Reconnect</span>`
+            ? `<span title="Token expired — reconnect this account" style="font-size:0.68rem;background:var(--status-inbox-bg);color:var(--status-inbox-fg);border-radius:4px;padding:0.15rem 0.4rem;flex-shrink:0;cursor:default">⚠ Reconnect</span>`
             : '';
           html += `
           <label class="account-check-row" id="row-${id}">
@@ -2046,6 +2048,22 @@
         btn.textContent = 'Generate';
       }
     }
+
+    // ── Theme toggle ──────────────────────────────────────────────────────────
+    function toggleTheme() {
+      const next = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('creatorpost-theme', next);
+      _syncThemeIcon();
+    }
+    function _syncThemeIcon() {
+      const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+      const sun  = document.getElementById('icon-sun');
+      const moon = document.getElementById('icon-moon');
+      if (sun)  sun.style.display  = isDark ? '' : 'none';
+      if (moon) moon.style.display = isDark ? 'none' : '';
+    }
+    document.addEventListener('DOMContentLoaded', _syncThemeIcon);
 
   </script>
 

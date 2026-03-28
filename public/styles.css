@@ -3,23 +3,77 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Light theme (default) ── */
 :root {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --border: #1e1e1e;
-  --text: #ededed;
-  --muted: #888;
-  --accent: #7c3aed;
-  --accent-light: #8b5cf6;
-  --accent-hover: #6d28d9;
+  --bg: #f9f9f8;
+  --surface: #ffffff;
+  --surface-alt: #f3f3f1;
+  --nav-bg: rgba(255,255,255,0.92);
+  --hover-bg: rgba(0,0,0,0.04);
+  --border: rgba(0,0,0,0.07);
+  --border-strong: rgba(0,0,0,0.14);
+  --text: #111111;
+  --muted: rgba(0,0,0,0.4);
+  --accent: #7c5cfc;
+  --accent-light: #7c5cfc;
+  --accent-hover: #6040e0;
+  --accent-soft: rgba(124,92,252,0.08);
+  --accent-ring: rgba(124,92,252,0.18);
   --radius: 8px;
-  /* Platform accent colors */
-  --color-tiktok: #ccc;
-  --bg-tiktok: rgba(255,255,255,0.08);
+  /* Platform */
+  --color-tiktok: #444444;
+  --bg-tiktok: rgba(0,0,0,0.05);
+  --color-youtube: #cc1a00;
+  --bg-youtube: rgba(200,26,0,0.08);
+  --color-instagram: #b02070;
+  --bg-instagram: rgba(176,32,112,0.08);
+  /* Status */
+  --status-published-fg: #15803d;
+  --status-published-bg: rgba(22,163,74,0.1);
+  --status-inbox-fg: #a16207;
+  --status-inbox-bg: rgba(202,138,4,0.1);
+  --status-failed-fg: #dc2626;
+  --status-failed-bg: rgba(220,38,38,0.1);
+  --status-processing-fg: #7c5cfc;
+  --status-processing-bg: rgba(124,92,252,0.1);
+  --status-scheduled-fg: #2563eb;
+  --status-scheduled-bg: rgba(37,99,235,0.1);
+}
+
+/* ── Dark theme ── */
+[data-theme="dark"] {
+  --bg: #0f0f11;
+  --surface: #18181b;
+  --surface-alt: #1c1c1f;
+  --nav-bg: rgba(15,15,17,0.88);
+  --hover-bg: rgba(255,255,255,0.04);
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.14);
+  --text: #ededed;
+  --muted: rgba(255,255,255,0.4);
+  --accent: #7c3aed;
+  --accent-light: #a78bfa;
+  --accent-hover: #6d28d9;
+  --accent-soft: rgba(124,58,237,0.12);
+  --accent-ring: rgba(124,58,237,0.25);
+  /* Platform */
+  --color-tiktok: #b0b0b0;
+  --bg-tiktok: rgba(255,255,255,0.07);
   --color-youtube: #ff6b6b;
-  --bg-youtube: rgba(255,107,107,0.15);
+  --bg-youtube: rgba(255,107,107,0.12);
   --color-instagram: #e1306c;
-  --bg-instagram: rgba(225,48,108,0.15);
+  --bg-instagram: rgba(225,48,108,0.12);
+  /* Status */
+  --status-published-fg: #4ade80;
+  --status-published-bg: rgba(74,222,128,0.12);
+  --status-inbox-fg: #fbbf24;
+  --status-inbox-bg: rgba(251,191,36,0.12);
+  --status-failed-fg: #f87171;
+  --status-failed-bg: rgba(248,113,113,0.12);
+  --status-processing-fg: #a78bfa;
+  --status-processing-bg: rgba(167,139,250,0.12);
+  --status-scheduled-fg: #60a5fa;
+  --status-scheduled-bg: rgba(96,165,250,0.12);
 }
 
 html { font-size: 16px; scroll-behavior: smooth; }
@@ -44,7 +98,7 @@ nav {
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: rgba(10,10,10,0.85);
+  background: var(--nav-bg);
   backdrop-filter: blur(12px);
   z-index: 100;
   letter-spacing: -0.01em;
@@ -86,13 +140,13 @@ nav ul a {
   border-radius: 6px;
 }
 
-nav ul a:hover { color: var(--text); text-decoration: none; background: rgba(255,255,255,0.05); }
+nav ul a:hover { color: var(--text); text-decoration: none; background: var(--hover-bg); }
 
 nav ul a.active {
   color: var(--text);
   font-weight: 700;
   letter-spacing: -0.025em;
-  background: rgba(124,58,237,0.15);
+  background: var(--accent-soft);
 }
 
 /* ── Buttons ── */
@@ -119,7 +173,7 @@ nav ul a.active {
   background: var(--accent-hover);
   text-decoration: none;
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(124,58,237,0.35);
+  box-shadow: 0 4px 16px var(--accent-ring);
 }
 
 .btn-outline {
@@ -129,7 +183,7 @@ nav ul a.active {
 }
 
 .btn-outline:hover {
-  border-color: #444;
+  border-color: var(--border-strong);
   text-decoration: none;
   transform: translateY(-1px);
 }
@@ -145,8 +199,8 @@ nav ul a.active {
 .badge {
   display: inline-block;
   padding: 0.3rem 0.85rem;
-  background: rgba(124,58,237,0.15);
-  border: 1px solid rgba(124,58,237,0.3);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ring);
   border-radius: 999px;
   font-size: 0.78rem;
   color: var(--accent-light);
@@ -233,14 +287,14 @@ nav ul a.active {
 }
 
 .feature-card:hover {
-  border-color: #333;
+  border-color: var(--border-strong);
   transform: translateY(-2px);
 }
 
 .feature-icon {
   width: 40px;
   height: 40px;
-  background: rgba(124,58,237,0.12);
+  background: var(--accent-soft);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -468,7 +522,7 @@ footer .logo { font-size: 0.95rem; }
 
 .prose-page p, .prose-page li {
   font-size: 0.95rem;
-  color: #c0c0c0;
+  color: var(--muted);
   line-height: 1.75;
   margin-bottom: 0.75rem;
 }
@@ -512,16 +566,33 @@ footer .logo { font-size: 0.95rem; }
   text-transform: capitalize;
   white-space: nowrap;
 }
-.post-status.published  { background: rgba(74,222,128,0.15);  color: #4ade80; }
-.post-status.scheduled  { background: rgba(124,58,237,0.15);  color: var(--accent-light); }
-.post-status.processing { background: rgba(251,191,36,0.15);  color: #fbbf24; animation: status-pulse 2s ease-in-out infinite; }
-.post-status.failed     { background: rgba(248,113,113,0.15); color: #f87171; }
-.post-status.inbox      { background: rgba(96,165,250,0.15);  color: #60a5fa; }
+.post-status.published  { background: var(--status-published-bg);  color: var(--status-published-fg); }
+.post-status.scheduled  { background: var(--status-scheduled-bg);  color: var(--status-scheduled-fg); }
+.post-status.processing { background: var(--status-processing-bg); color: var(--status-processing-fg); animation: status-pulse 2s ease-in-out infinite; }
+.post-status.failed     { background: var(--status-failed-bg);     color: var(--status-failed-fg); }
+.post-status.inbox      { background: var(--status-inbox-bg);      color: var(--status-inbox-fg); }
 
 @keyframes status-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.5; }
 }
+
+/* ── Theme toggle button ── */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.45rem;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-toggle:hover { color: var(--text); border-color: var(--border-strong); background: var(--hover-bg); }
 
 /* ── Platform group header (used in account checkboxes + account list) ── */
 .platform-group-header {
