@@ -8,8 +8,10 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="icon" type="image/png" href="/logo.png" />
   <style>
+    /* body fills exactly 100vh; nav takes its natural height; auth-wrap takes the rest */
+    body { min-height: 100vh; display: flex; flex-direction: column; }
     .auth-wrap {
-      min-height: 100vh;
+      flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;

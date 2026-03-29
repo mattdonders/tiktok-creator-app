@@ -447,7 +447,7 @@
     function postsInRange() {
       if (!activeRange) return allPosts;
       const cutoff = Date.now() - activeRange * 24 * 60 * 60 * 1000;
-      return allPosts.filter(p => new Date(p.created_at).getTime() >= cutoff);
+      return allPosts.filter(p => postTs(p) >= cutoff);
     }
 
     function getViews(post) {
@@ -464,7 +464,7 @@
       const avgViews   = totalPosts ? Math.round(totalViews / totalPosts) : 0;
 
       const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      const weekPosts  = allPosts.filter(p => new Date(p.created_at).getTime() >= weekCutoff);
+      const weekPosts  = allPosts.filter(p => postTs(p) >= weekCutoff);
       const weekViews  = weekPosts.reduce((s, p) => s + getViews(p), 0);
 
       document.getElementById('card-total-views').textContent = fmtNum(totalViews);
@@ -495,7 +495,7 @@
       // Aggregate views by day
       const dayMap = {}; // 'YYYY-MM-DD' → total views
       for (const p of posts) {
-        const d = new Date(p.created_at);
+        const d = new Date(postTs(p));
         const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         dayMap[key] = (dayMap[key] ?? 0) + getViews(p);
       }
@@ -793,6 +793,12 @@
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
+    // created_at / scheduled_at are stored as Unix seconds — convert to ms for Date
+    function postTs(p) {
+      const ts = p.scheduled_at || p.created_at || 0;
+      return ts < 1e10 ? ts * 1000 : ts;
+    }
+
     function fmtNum(n) {
       if (n == null || isNaN(n)) return '—';
       if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';

@@ -389,7 +389,9 @@
     // Calendar rendering
     // ─────────────────────────────────────────────────────────────────────────
     function getPostDate(p) {
-      return new Date(p.scheduled_at || p.created_at || p.time || 0);
+      // created_at / scheduled_at are stored as Unix seconds (not ms) — multiply to get ms
+      const ts = p.scheduled_at || p.created_at || p.time || 0;
+      return new Date(ts < 1e10 ? ts * 1000 : ts);
     }
 
     function getPostsForDay(year, month, day) {
