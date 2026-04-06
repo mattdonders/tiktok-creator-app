@@ -1316,6 +1316,23 @@
       const origLabel     = btn.textContent;
       const checkedAccounts = checkedIds.map(id => accounts.find(a => a.id === id)).filter(Boolean);
 
+      // Pre-validate TikTok-specific fields before changing button state
+      const hasTikTok = checkedAccounts.some(a => (a.platform ?? 'tiktok') === 'tiktok');
+      if (hasTikTok) {
+        const privacy = document.getElementById('tiktok-privacy').value;
+        if (!privacy) { showStatus('Select a privacy level in TikTok Settings before posting.', 'error'); return; }
+        const disclosure = document.getElementById('tiktok-disclosure-toggle').checked;
+        if (disclosure) {
+          const brandOrganic = document.getElementById('tiktok-brand-organic').checked;
+          const brandContent = document.getElementById('tiktok-brand-content').checked;
+          if (!brandOrganic && !brandContent) {
+            document.getElementById('disclosure-validation').style.display = 'block';
+            showStatus('You need to indicate if your content promotes yourself, a third party, or both.', 'error');
+            return;
+          }
+        }
+      }
+
       btn.disabled    = true;
       btn.textContent = checkedAccounts.length > 1 ? `Uploading to ${checkedAccounts.length}…` : "Uploading…";
       showStatus(checkedAccounts.length > 1 ? `Uploading to ${checkedAccounts.length} accounts…` : "Uploading…");
