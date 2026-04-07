@@ -703,25 +703,26 @@
               <!-- Disclosure options (shown when disclosure toggled on) -->
               <div id="disclosure-opts" class="disclosure-opts" style="display:none;margin-top:0.75rem">
                 <label class="disclosure-opt">
-                  <input type="checkbox" id="tiktok-brand-organic" />
+                  <input type="checkbox" id="tiktok-brand-organic" onchange="onDisclosureOptChange()" />
                   <div>
                     <div style="font-weight:600">Your brand</div>
                     <div style="font-size:0.75rem;color:var(--muted);margin-top:0.15rem">Promotes yourself, your business, or your personal content</div>
                   </div>
                 </label>
                 <label class="disclosure-opt">
-                  <input type="checkbox" id="tiktok-brand-content" />
+                  <input type="checkbox" id="tiktok-brand-content" onchange="onDisclosureOptChange()" />
                   <div>
                     <div style="font-weight:600">Branded content</div>
                     <div style="font-size:0.75rem;color:var(--muted);margin-top:0.15rem">Paid partnership — you received compensation to promote a third party</div>
                   </div>
                 </label>
+                <div id="disclosure-label" style="display:none;font-size:0.75rem;color:#a78bfa;margin-top:0.5rem;padding:0.4rem 0.6rem;background:rgba(167,139,250,0.08);border-radius:6px;border:1px solid rgba(167,139,250,0.2)"></div>
                 <div id="disclosure-validation" style="display:none;font-size:0.75rem;color:#f87171;margin-top:0.5rem">You need to indicate if your content promotes yourself, a third party, or both.</div>
               </div>
             </div>
 
             <!-- Consent text -->
-            <div class="consent-text">
+            <div class="consent-text" id="tiktok-consent-text">
               By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener">Music Usage Confirmation</a>.
             </div>
           </div>
@@ -1098,6 +1099,50 @@
     function onDisclosureToggle(el) {
       document.getElementById('disclosure-opts').style.display = el.checked ? 'flex' : 'none';
       document.getElementById('disclosure-validation').style.display = 'none';
+      document.getElementById('disclosure-label').style.display = 'none';
+      if (!el.checked) updateConsentText(false);
+    }
+
+    function onDisclosureOptChange() {
+      const brandOrganic = document.getElementById('tiktok-brand-organic').checked;
+      const brandContent = document.getElementById('tiktok-brand-content').checked;
+      const labelEl = document.getElementById('disclosure-label');
+
+      // Show label feedback per TikTok guidelines
+      if (brandOrganic || brandContent) {
+        document.getElementById('disclosure-validation').style.display = 'none';
+        const labelText = brandContent
+          ? "Your photo/video will be labeled as 'Paid partnership'"
+          : "Your photo/video will be labeled as 'Promotional content'";
+        labelEl.textContent = labelText;
+        labelEl.style.display = 'block';
+      } else {
+        labelEl.style.display = 'none';
+      }
+
+      // Dynamic consent text
+      updateConsentText(brandContent);
+
+      // Branded content can't be SELF_ONLY — disable that option
+      const privacyEl = document.getElementById('tiktok-privacy');
+      const selfOnlyOpt = privacyEl.querySelector('option[value="SELF_ONLY"]');
+      if (selfOnlyOpt) {
+        selfOnlyOpt.disabled = brandContent;
+        if (brandContent && privacyEl.value === 'SELF_ONLY') {
+          privacyEl.value = '';
+          showStatus('Branded content visibility cannot be set to private. Please select a different privacy level.', 'error');
+        }
+      }
+    }
+
+    function updateConsentText(isBrandedContent) {
+      const el = document.getElementById('tiktok-consent-text');
+      if (!el) return;
+      if (isBrandedContent) {
+        el.innerHTML = `By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/branded-content-policy/en" target="_blank" rel="noopener">Branded Content Policy</a> and <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener">Music Usage Confirmation</a>.`;
+      } else {
+        el.innerHTML = `By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener">Music Usage Confirmation</a>.`;
+      }
     }
 
     function updateSubmitBtn() {
@@ -1435,8 +1480,8 @@
       const message = scheduled
         ? `Scheduled for ${accName} ✓`
         : data.inbox
-          ? `Uploaded to ${accName} ✓ (check TikTok Drafts)`
-          : `Posted to ${accName} ✓`;
+          ? `Uploaded to ${accName} ✓ (check TikTok Drafts — it may take a few minutes to process)`
+          : `Posted to ${accName} ✓ — it may take a few minutes to process and appear on your profile`;
 
       const post = normalisePost({
         id: data.publish_id, caption: caption || "(no caption)",
@@ -1662,6 +1707,8 @@
       document.getElementById('disclosure-opts').style.display = 'none';
       document.getElementById('tiktok-brand-organic').checked = false;
       document.getElementById('tiktok-brand-content').checked = false;
+      document.getElementById('disclosure-label').style.display = 'none';
+      updateConsentText(false);
 
       // Restore drop zone, clear preview
       const previewWrap = document.getElementById('video-preview-wrap');
