@@ -2040,6 +2040,15 @@ app.post('/api/v1/publish', async (c) => {
   const platform           = formData.get('platform') ?? 'tiktok';
   const coverTimestampRaw  = formData.get('video_cover_timestamp_ms');
   const coverTimestampMs   = coverTimestampRaw !== null ? parseInt(coverTimestampRaw, 10) : null;
+  // Privacy level must come from the caller (which should have sourced it from
+  // creator_info.data.privacy_level_options), never a hardcoded value — TikTok's
+  // Direct Post audit rejects apps that don't honor per-creator privacy options.
+  const VALID_PRIVACY_LEVELS = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'];
+  const requestedPrivacy   = formData.get('privacy_level');
+  const privacyLevel       = VALID_PRIVACY_LEVELS.includes(requestedPrivacy) ? requestedPrivacy : 'SELF_ONLY';
+  const disableComment     = formData.get('disable_comment') === 'true';
+  const disableDuet        = formData.get('disable_duet') === 'true';
+  const disableStitch      = formData.get('disable_stitch') === 'true';
 
   if (!videoFile && !videoUrl) return c.json({ error: 'Provide video file or video_url' }, 400);
 
@@ -2059,8 +2068,8 @@ app.post('/api/v1/publish', async (c) => {
   }
 
   const postInfo = {
-    title: caption, privacy_level: 'PUBLIC_TO_EVERYONE',
-    disable_duet: false, disable_comment: false, disable_stitch: false,
+    title: caption, privacy_level: privacyLevel,
+    disable_duet: disableDuet, disable_comment: disableComment, disable_stitch: disableStitch,
     video_cover_timestamp_ms: (coverTimestampMs !== null && !isNaN(coverTimestampMs)) ? coverTimestampMs : 1000,
   };
 
@@ -2162,7 +2171,7 @@ app.post('/api/v1/publish/photo', async (c) => {
   const session = await getApiKeySession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
-  const { account_id, caption, images, music_id } = await c.req.json().catch(() => ({}));
+  const { account_id, caption, images, music_id, privacy_level } = await c.req.json().catch(() => ({}));
 
   if (!account_id)                         return c.json({ error: 'account_id required' }, 400);
   if (!caption)                            return c.json({ error: 'caption required' }, 400);
@@ -2174,9 +2183,14 @@ app.post('/api/v1/publish/photo', async (c) => {
   ).bind(account_id, session.user_id, 'tiktok').first();
   if (!account) return c.json({ error: 'Account not found' }, 404);
 
+  // Same rule as /api/v1/publish: privacy level must come from the caller
+  // (sourced from creator_info.data.privacy_level_options), never hardcoded.
+  const VALID_PHOTO_PRIVACY_LEVELS = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'];
+  const photoPrivacyLevel = VALID_PHOTO_PRIVACY_LEVELS.includes(privacy_level) ? privacy_level : 'SELF_ONLY';
+
   const post_info = {
     description:     caption.slice(0, 4000),  // photo posts use description (max 4000), not title (max 90)
-    privacy_level:   'PUBLIC_TO_EVERYONE',
+    privacy_level:   photoPrivacyLevel,
     disable_comment: false,
     auto_add_music:  !music_id,
     ...(music_id ? { music_id: String(music_id) } : {}),

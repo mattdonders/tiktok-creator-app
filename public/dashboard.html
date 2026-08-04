@@ -655,6 +655,15 @@
           <div id="tiktok-panel" class="tt-panel" style="display:none">
             <div class="tt-panel-title">🎵 TikTok Settings</div>
 
+            <!-- Creator identity — live from creator_info, shown before every post -->
+            <div id="tiktok-creator-identity" style="display:none;align-items:center;gap:0.65rem;margin-bottom:1rem;padding:0.6rem 0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+              <img id="tiktok-creator-avatar" src="" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--accent-soft)" />
+              <div style="min-width:0">
+                <div id="tiktok-creator-name" style="font-size:0.85rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+                <div style="font-size:0.72rem;color:var(--muted)">Posting as this TikTok creator</div>
+              </div>
+            </div>
+
             <!-- Privacy -->
             <div class="form-group">
               <label>Privacy <span style="color:#f87171;font-weight:400;text-transform:none;letter-spacing:normal">*</span></label>
@@ -725,6 +734,12 @@
             <div class="consent-text" id="tiktok-consent-text">
               By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener">Music Usage Confirmation</a>.
             </div>
+
+            <!-- Explicit per-post confirmation — required before submit, not just the Publish button -->
+            <label style="display:flex;align-items:flex-start;gap:0.6rem;margin-top:0.85rem;font-size:0.85rem;color:var(--text);cursor:pointer">
+              <input type="checkbox" id="tiktok-post-confirm" autocomplete="off" style="margin-top:0.2rem;accent-color:var(--accent);width:15px;height:15px;flex-shrink:0" />
+              <span>I confirm I want to publish this content to TikTok with the settings above.</span>
+            </label>
           </div>
 
           <!-- YouTube Settings Panel (shown when YouTube account checked) -->
@@ -1054,6 +1069,7 @@
       // Only reload if not cached
       if (!tikTokCreatorInfoCache[accountId]) {
         privacyEl.innerHTML = '<option value="" disabled selected>Loading…</option>';
+        document.getElementById('tiktok-creator-identity').style.display = 'none';
         try {
           const res = await fetch(`/api/tiktok/creator_info?account_id=${encodeURIComponent(accountId)}`);
           if (res.ok) tikTokCreatorInfoCache[accountId] = await res.json();
@@ -1061,6 +1077,20 @@
       }
 
       const info = tikTokCreatorInfoCache[accountId] ?? {};
+
+      // Creator identity — must be shown before every post per TikTok's guidelines
+      const identityEl = document.getElementById('tiktok-creator-identity');
+      const avatarEl   = document.getElementById('tiktok-creator-avatar');
+      const nameEl     = document.getElementById('tiktok-creator-name');
+      const identityName = info.creator_nickname || (info.creator_username ? `@${info.creator_username}` : '');
+      if (identityName || info.creator_avatar_url) {
+        avatarEl.style.display = info.creator_avatar_url ? '' : 'none';
+        avatarEl.src = info.creator_avatar_url ?? '';
+        nameEl.textContent = identityName || 'TikTok creator';
+        identityEl.style.display = 'flex';
+      } else {
+        identityEl.style.display = 'none';
+      }
 
       // Populate privacy options
       const opts = info.privacy_level_options;
@@ -1376,6 +1406,10 @@
             return;
           }
         }
+        if (!document.getElementById('tiktok-post-confirm').checked) {
+          showStatus('Please confirm you want to publish this content to TikTok before posting.', 'error');
+          return;
+        }
       }
 
       btn.disabled    = true;
@@ -1430,6 +1464,9 @@
       // Validate TikTok-specific required fields
       const tiktokPrivacy = document.getElementById('tiktok-privacy').value;
       if (!tiktokPrivacy) throw new Error('Select a privacy level in TikTok Settings before posting.');
+      if (!document.getElementById('tiktok-post-confirm').checked) {
+        throw new Error('Please confirm you want to publish this content to TikTok before posting.');
+      }
 
       const allowComment = document.getElementById('tiktok-allow-comment').checked;
       const allowDuet    = document.getElementById('tiktok-allow-duet').checked;
@@ -1708,6 +1745,8 @@
       document.getElementById('tiktok-brand-organic').checked = false;
       document.getElementById('tiktok-brand-content').checked = false;
       document.getElementById('disclosure-label').style.display = 'none';
+      document.getElementById('tiktok-post-confirm').checked = false;
+      document.getElementById('tiktok-creator-identity').style.display = 'none';
       updateConsentText(false);
 
       // Restore drop zone, clear preview
