@@ -655,6 +655,16 @@
           <div id="tiktok-panel" class="tt-panel" style="display:none">
             <div class="tt-panel-title">🎵 TikTok Settings</div>
 
+            <!-- Fail-loud state: creator_info could not be loaded. We never substitute
+                 fabricated privacy options or a placeholder identity — posting is blocked. -->
+            <div id="tiktok-info-error" style="display:none;font-size:0.82rem;color:#f87171;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:8px;padding:0.7rem 0.85rem">
+              <div style="font-weight:600;margin-bottom:0.25rem">Couldn't load your TikTok creator info</div>
+              <div style="color:var(--muted);line-height:1.45">Privacy options and your creator identity come directly from TikTok, so posting is disabled until they load. Try reloading, or reconnect this account.</div>
+              <button type="button" class="btn btn-outline" style="font-size:0.78rem;padding:0.3rem 0.9rem;margin-top:0.55rem"
+                onclick="retryTikTokCreatorInfo()">Retry</button>
+            </div>
+
+            <div id="tiktok-panel-body">
             <!-- Creator identity — live from creator_info, shown before every post -->
             <div id="tiktok-creator-identity" style="display:none;align-items:center;gap:0.65rem;margin-bottom:1rem;padding:0.6rem 0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:8px">
               <img id="tiktok-creator-avatar" src="" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--accent-soft)" />
@@ -740,6 +750,10 @@
               <input type="checkbox" id="tiktok-post-confirm" autocomplete="off" style="margin-top:0.2rem;accent-color:var(--accent);width:15px;height:15px;flex-shrink:0" />
               <span>I confirm I want to publish this content to TikTok with the settings above.</span>
             </label>
+            <div style="font-size:0.72rem;color:var(--muted);margin-top:0.6rem">
+              How CreatorPost handles your data: <a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Privacy Policy</a>
+            </div>
+            </div><!-- /tiktok-panel-body -->
           </div>
 
           <!-- YouTube Settings Panel (shown when YouTube account checked) -->
@@ -842,6 +856,15 @@
 
     </div><!-- /dash-stack -->
   </div><!-- /dash-layout -->
+
+  <footer style="padding:1.25rem 2rem;font-size:0.8rem">
+    <div class="footer-links">
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Service</a>
+      <a href="mailto:matt@mattdonders.com">Contact</a>
+    </div>
+    <span>&copy; 2026 CreatorPost. All rights reserved.</span>
+  </footer>
 
   <div id="toast" class="toast"></div>
 
@@ -1039,6 +1062,11 @@
     // TikTok platform panel
     // ─────────────────────────────────────────────────────────────────────────
     const tikTokCreatorInfoCache = {};
+    // True when creator_info could not be loaded for the selected TikTok account.
+    // While true the TikTok panel is blocked — we never fall back to fabricated data.
+    let tikTokCreatorInfoFailed = false;
+    const TIKTOK_CREATOR_INFO_ERROR =
+      "Couldn't load your TikTok creator info — reload the page or reconnect the account before posting.";
 
     function updatePlatformPanels() {
       const checkedAccounts = getCheckedAccountIds()
@@ -1053,6 +1081,7 @@
         loadAndPopulateTikTokPanel(tiktokAccounts[0].id);
       } else {
         ttPanel.style.display = 'none';
+        tikTokCreatorInfoFailed = false;
       }
 
       document.getElementById('youtube-panel').style.display =
@@ -1068,49 +1097,54 @@
 
       // Only reload if not cached
       if (!tikTokCreatorInfoCache[accountId]) {
+        clearTikTokCreatorInfoError();
         privacyEl.innerHTML = '<option value="" disabled selected>Loading…</option>';
         document.getElementById('tiktok-creator-identity').style.display = 'none';
         try {
           const res = await fetch(`/api/tiktok/creator_info?account_id=${encodeURIComponent(accountId)}`);
-          if (res.ok) tikTokCreatorInfoCache[accountId] = await res.json();
-        } catch { /* ignore — fall through to defaults */ }
+          if (!res.ok) throw new Error(`creator_info HTTP ${res.status}`);
+          tikTokCreatorInfoCache[accountId] = await res.json();
+        } catch (err) {
+          // FAIL LOUD — no hardcoded privacy options, no placeholder identity.
+          console.error('[tiktok] creator_info load failed', err);
+          showTikTokCreatorInfoError(accountId);
+          return;
+        }
       }
 
-      const info = tikTokCreatorInfoCache[accountId] ?? {};
+      const info = tikTokCreatorInfoCache[accountId];
 
       // Creator identity — must be shown before every post per TikTok's guidelines
       const identityEl = document.getElementById('tiktok-creator-identity');
       const avatarEl   = document.getElementById('tiktok-creator-avatar');
       const nameEl     = document.getElementById('tiktok-creator-name');
       const identityName = info.creator_nickname || (info.creator_username ? `@${info.creator_username}` : '');
-      if (identityName || info.creator_avatar_url) {
-        avatarEl.style.display = info.creator_avatar_url ? '' : 'none';
-        avatarEl.src = info.creator_avatar_url ?? '';
-        nameEl.textContent = identityName || 'TikTok creator';
-        identityEl.style.display = 'flex';
-      } else {
-        identityEl.style.display = 'none';
+      const opts = info.privacy_level_options;
+
+      // Both the identity and the privacy options come from TikTok. If either is
+      // missing the response is unusable — block posting rather than invent values.
+      if (!identityName || !opts?.length) {
+        console.error('[tiktok] creator_info incomplete', info);
+        showTikTokCreatorInfoError(accountId);
+        return;
       }
 
-      // Populate privacy options
-      const opts = info.privacy_level_options;
+      clearTikTokCreatorInfoError();
+
+      avatarEl.style.display = info.creator_avatar_url ? '' : 'none';
+      avatarEl.src = info.creator_avatar_url ?? '';
+      nameEl.textContent = identityName;
+      identityEl.style.display = 'flex';
+
+      // Populate privacy options — strictly from creator_info, never hardcoded
       const PRIVACY_LABELS = {
         PUBLIC_TO_EVERYONE:    'Public — Everyone',
         MUTUAL_FOLLOW_FRIENDS: 'Friends — Followers you follow back',
         FOLLOWER_OF_CREATOR:   'Followers',
         SELF_ONLY:             'Only Me',
       };
-      if (opts?.length) {
-        privacyEl.innerHTML = '<option value="" disabled selected>— select privacy level —</option>' +
-          opts.map(o => `<option value="${escHtml(o)}">${escHtml(PRIVACY_LABELS[o] ?? o)}</option>`).join('');
-      } else {
-        privacyEl.innerHTML = `
-          <option value="" disabled selected>— select privacy level —</option>
-          <option value="PUBLIC_TO_EVERYONE">Public — Everyone</option>
-          <option value="MUTUAL_FOLLOW_FRIENDS">Friends — Followers you follow back</option>
-          <option value="FOLLOWER_OF_CREATOR">Followers</option>
-          <option value="SELF_ONLY">Only Me</option>`;
-      }
+      privacyEl.innerHTML = '<option value="" disabled selected>— select privacy level —</option>' +
+        opts.map(o => `<option value="${escHtml(o)}">${escHtml(PRIVACY_LABELS[o] ?? o)}</option>`).join('');
 
       // Interaction constraints from creator_info
       commentEl.disabled = !!info.comment_disabled;
@@ -1124,6 +1158,34 @@
       hintEl.textContent = info.max_video_post_duration_sec
         ? `Max video length: ${info.max_video_post_duration_sec}s`
         : '';
+    }
+
+    // creator_info is unusable → show a visible error and block the TikTok posting UI.
+    // Never fall back to hardcoded privacy options or a placeholder creator identity.
+    function showTikTokCreatorInfoError(accountId) {
+      tikTokCreatorInfoFailed = true;
+      if (accountId) delete tikTokCreatorInfoCache[accountId];
+      document.getElementById('tiktok-info-error').style.display = 'block';
+      document.getElementById('tiktok-panel-body').style.display = 'none';
+      document.getElementById('tiktok-creator-identity').style.display = 'none';
+      const privacyEl = document.getElementById('tiktok-privacy');
+      privacyEl.innerHTML = '<option value="" disabled selected>Unavailable</option>';
+      privacyEl.value = '';
+      document.getElementById('tiktok-post-confirm').checked = false;
+      showStatus(TIKTOK_CREATOR_INFO_ERROR, 'error');
+      updateSubmitBtn();
+    }
+
+    function clearTikTokCreatorInfoError() {
+      tikTokCreatorInfoFailed = false;
+      document.getElementById('tiktok-info-error').style.display = 'none';
+      document.getElementById('tiktok-panel-body').style.display = '';
+      updateSubmitBtn();
+    }
+
+    function retryTikTokCreatorInfo() {
+      clearTikTokCreatorInfoError();
+      updatePlatformPanels();
     }
 
     function onDisclosureToggle(el) {
@@ -1179,7 +1241,7 @@
       const btn       = document.getElementById("submit-btn");
       const n         = getCheckedAccountIds().length;
       const scheduled = document.getElementById("schedule-toggle")?.checked ?? false;
-      btn.disabled    = (n === 0);
+      btn.disabled    = (n === 0) || tikTokCreatorInfoFailed;
       if (n >= 2) {
         btn.textContent = scheduled ? `Schedule to ${n} accounts` : `Publish to ${n} accounts`;
       } else {
@@ -1394,6 +1456,7 @@
       // Pre-validate TikTok-specific fields before changing button state
       const hasTikTok = checkedAccounts.some(a => (a.platform ?? 'tiktok') === 'tiktok');
       if (hasTikTok) {
+        if (tikTokCreatorInfoFailed) { showStatus(TIKTOK_CREATOR_INFO_ERROR, 'error'); return; }
         const privacy = document.getElementById('tiktok-privacy').value;
         if (!privacy) { showStatus('Select a privacy level in TikTok Settings before posting.', 'error'); return; }
         const disclosure = document.getElementById('tiktok-disclosure-toggle').checked;
@@ -1452,9 +1515,17 @@
         showStatusHTML(lines.join(''), allOk ? 'success' : 'error');
       }
 
-      renderPosts(); updateStats(); resetForm();
-      btn.disabled    = false;
-      btn.textContent = origLabel;
+      // The button must always come back, even if a render/reset step throws —
+      // a permanently stuck "Uploading…" looks like a dead app.
+      try {
+        renderPosts(); updateStats(); resetForm();
+      } catch (err) {
+        console.error('[submitPost] post-submit cleanup failed', err);
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = origLabel;
+        updateSubmitBtn();
+      }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1462,6 +1533,7 @@
     // ─────────────────────────────────────────────────────────────────────────
     async function submitTikTok({ acc, videoFile, videoUrl, caption, scheduled, schedTime }) {
       // Validate TikTok-specific required fields
+      if (tikTokCreatorInfoFailed) throw new Error(TIKTOK_CREATOR_INFO_ERROR);
       const tiktokPrivacy = document.getElementById('tiktok-privacy').value;
       if (!tiktokPrivacy) throw new Error('Select a privacy level in TikTok Settings before posting.');
       if (!document.getElementById('tiktok-post-confirm').checked) {
@@ -1716,7 +1788,8 @@
 
     function resetForm() {
       document.getElementById("upload-form").reset();
-      document.getElementById("file-name").textContent  = "";
+      // NOTE: #file-name no longer exists — the selected filename lives in
+      // #preview-filename, which is cleared with the preview further below.
       document.getElementById("char-count").textContent = "0 / 2200";
       document.getElementById("schedule-toggle").checked = false;
       toggleSchedule(document.getElementById("schedule-toggle"));
@@ -1747,6 +1820,7 @@
       document.getElementById('disclosure-label').style.display = 'none';
       document.getElementById('tiktok-post-confirm').checked = false;
       document.getElementById('tiktok-creator-identity').style.display = 'none';
+      clearTikTokCreatorInfoError();
       updateConsentText(false);
 
       // Restore drop zone, clear preview
