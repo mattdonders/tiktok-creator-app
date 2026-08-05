@@ -128,7 +128,7 @@ Pan back to show the full posting form with all elements visible:
 - Post button
 
 **Script:**
-> "All five required UX elements from TikTok's Content Posting API guidelines are present in CreatorPost's posting flow: creator info query for privacy options, interaction toggles defaulting to on, commercial content disclosure with both sub-options, music usage consent, and video preview. Thank you for reviewing."
+> "All five required UX elements from TikTok's Content Posting API guidelines are present in CreatorPost's posting flow: creator info query for privacy options, interaction toggles defaulting to off, commercial content disclosure with both sub-options, music usage consent, and video preview. Thank you for reviewing."
 
 ---
 
