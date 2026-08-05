@@ -38,18 +38,27 @@ TikTok's guidelines require these 5 items to be shown **sequentially**. Do not s
 
 ---
 
-### Point 2 — Comment, Duet & Stitch Toggles (Default ON)
+### Point 2 — Comment, Duet & Stitch Toggles (Default OFF — explicit opt-in)
 
-**What to show:** All three interaction toggles are visible and **defaulted to ON** when the form loads. Then demonstrate that the user can turn them off.
+**What to show:** All three interaction toggles are visible and **default to OFF** when the
+form loads. Then demonstrate that the user turns them on manually.
+
+> TikTok Content Sharing Guidelines: *"Users must manually turn on these interaction settings
+> and none should be checked by default."* Additionally, if `creator_info` reports an
+> interaction is disabled on the account, the corresponding toggle must be disabled and
+> greyed out.
 
 **On screen:**
 1. Scroll to the TikTok Settings panel (it expands when TikTok is selected)
-2. Pause on the three toggles — Comment, Duet, Stitch — all checked/on
-3. Click one toggle OFF, then back ON
-4. Narrate that these default to enabled per TikTok's guidelines
+2. Pause on the three toggles — Comment, Duet, Stitch — **all unchecked/off**
+3. Click one toggle ON, then back OFF — showing it is the user's manual choice
+4. Narrate that none are checked by default per TikTok's guidelines
 
 **Script:**
-> "The Comment, Duet, and Stitch interaction settings are shown to the user and default to enabled, as required by TikTok's guidelines. Users can turn any of these off before posting, but the default is always on."
+> "The Comment, Duet, and Stitch interaction settings are shown to the user and are off by
+> default — none are pre-checked. The user must manually turn on any interaction they want to
+> allow. If TikTok's creator info response reports that an interaction is disabled on the
+> account, CreatorPost disables and greys out that toggle."
 
 ---
 

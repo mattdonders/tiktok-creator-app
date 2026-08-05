@@ -689,21 +689,21 @@
                 <div class="tt-toggle-row">
                   <span>Allow comments</span>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="tiktok-allow-comment" autocomplete="off" checked />
+                    <input type="checkbox" id="tiktok-allow-comment" autocomplete="off" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
                 <div class="tt-toggle-row">
                   <span>Allow duet</span>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="tiktok-allow-duet" autocomplete="off" checked />
+                    <input type="checkbox" id="tiktok-allow-duet" autocomplete="off" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
                 <div class="tt-toggle-row">
                   <span>Allow stitch</span>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="tiktok-allow-stitch" autocomplete="off" checked />
+                    <input type="checkbox" id="tiktok-allow-stitch" autocomplete="off" />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
@@ -1810,7 +1810,9 @@
       document.getElementById('tiktok-duration-hint').textContent = '';
       ['tiktok-allow-comment','tiktok-allow-duet','tiktok-allow-stitch'].forEach(id => {
         const el = document.getElementById(id);
-        el.checked  = true;
+        // TikTok Content Sharing Guidelines: interaction settings must NOT be
+        // pre-checked — the user has to turn each one on explicitly.
+        el.checked  = false;
         el.disabled = false;
       });
       document.getElementById('tiktok-disclosure-toggle').checked = false;
