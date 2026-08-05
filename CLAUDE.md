@@ -101,6 +101,16 @@ TIKTOK_CLIENT_SECRET=...
 DISCORD_WEBHOOK_URL=...   # To receive tokens after OAuth
 ```
 
+## App Review submission convention (added 2026-08-04)
+
+TikTok's App Review "Direct Post" audit requires a separate video upload (up to 3 MP4s,
+≤50MB each) covering: OAuth authorization, navigating to the post page, and the result
+after Publish is triggered — this is a different limit from the Content Posting API's
+own 4GB/chunked upload limit, don't conflate them. Deliverables (clips + submission notes)
+live in `docs/submission-videos/`, committed to the repo (not gitignored). Interaction
+toggles (Comment/Duet/Stitch) must default OFF per TikTok's Content Sharing Guidelines —
+this was a real bug (fixed commit `d76af6a`) behind at least one prior rejection.
+
 ## Notes
 
 - The OAuth flow is only needed once per TikTok account to get the initial token.

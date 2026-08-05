@@ -2270,22 +2270,29 @@ async function runTikTokSync(c, user_id, account_id) {
 
   // Fetch follower count (requires user.info.stats scope — graceful fallback)
   let followerCount = null;
+  let statsWarning = null;
   try {
     const uRes  = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=follower_count,display_name', {
       method:  'GET',
       headers: { Authorization: `Bearer ${account.access_token}` },
     });
     const uData = await uRes.json();
+    if (uData.error?.code && uData.error.code !== 'ok') {
+      statsWarning = { code: uData.error.code, message: uData.error.message };
+    }
     followerCount = uData.data?.user?.follower_count ?? null;
     if (followerCount !== null) {
       await c.env.DB.prepare('UPDATE connected_accounts SET follower_count = ?, follower_count_updated_at = ? WHERE id = ?')
         .bind(followerCount, now(), account_id).run();
     }
-  } catch { /* scope not granted yet — skip */ }
+  } catch (err) {
+    statsWarning = { code: 'fetch_failed', message: err.message };
+  }
 
   // Paginate through video list
   let cursor = 0, hasMore = true, imported = 0, skipped = 0;
   const importedVideoIds = [];
+  let videoListError = null;
   while (hasMore) {
     const res = await fetch(
       'https://open.tiktokapis.com/v2/video/list/?fields=id,title,video_description,create_time,cover_image_url',
@@ -2300,6 +2307,7 @@ async function runTikTokSync(c, user_id, account_id) {
     const safeText = rawText.replace(/:(\s*)(\d{16,})/g, ':"$2"');
     const data     = JSON.parse(safeText);
     if (data.error?.code !== 'ok') {
+      videoListError = { code: data.error?.code, message: data.error?.message };
       log(c, { type: 'error', event: 'tiktok_sync_video_list_failed', tiktok_error: data.error?.code, tiktok_message: data.error?.message, account_id, user_id });
       break;
     }
@@ -2400,7 +2408,11 @@ async function runTikTokSync(c, user_id, account_id) {
     }
   }
 
-  return { ok: true, imported, skipped, follower_count: followerCount, video_ids: importedVideoIds };
+  return {
+    ok: true, imported, skipped, follower_count: followerCount, video_ids: importedVideoIds,
+    ...(statsWarning ? { stats_warning: statsWarning } : {}),
+    ...(videoListError ? { video_list_error: videoListError } : {}),
+  };
 }
 
 // POST /api/tiktok/backfill-usernames — dev only (@mattdonders.com), fetches username for all connected TikTok accounts

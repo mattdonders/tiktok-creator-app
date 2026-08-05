@@ -32,8 +32,6 @@
 - [ ] Collect feedback (Tally form or direct DM)
 - [ ] Fix top 2-3 reported issues
 - [ ] If TikTok Direct Post approved → update landing page, remove inbox caveats
-- [ ] **Record TikTok Direct Post demo video** (3rd submission) — script in `docs/tiktok-direct-post-demo-video.md`, nail Point 3a validation error
-- [ ] **Submit 3rd Direct Post application** with new demo video
 - [ ] Start Product Hunt prep (screenshots, tagline, hunter outreach)
 
 ---
@@ -120,3 +118,8 @@
 - [x] Fix recheck button for inbox posts + `updatePostStatus` find by publish_id
 - [x] Posts & Analytics page (`/posts`) with infinite scroll, filters, aggregate stats
 - [x] Pipeline API reference doc (`docs/pipeline-api-reference.md`)
+- [x] Fix interaction toggles (Comment/Duet/Stitch) defaulting to ON — violated TikTok Content Sharing Guidelines; fixed HTML default + `resetForm()` re-check bug (commit `d76af6a`, 2026-08-04)
+- [x] Record 3-clip TikTok Direct Post demo video (OAuth, post-to-TikTok flow, post-trigger validation) and submit 4th Content Posting API application (submitted 2026-08-04, awaiting response 2-4 weeks) — clips + notes in `docs/submission-videos/`
+
+## 🔜 Follow-up
+- [ ] Check TikTok Developer Portal "Manage apps" page in 2-4 weeks (~week of 2026-08-18 to 2026-09-01) for the 4th resubmission decision
