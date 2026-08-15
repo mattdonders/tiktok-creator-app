@@ -18,14 +18,9 @@ import {
   PINTEREST_PRODUCTION_PUID,
   PINTEREST_SANDBOX_SENTINEL_PUID,
 } from '../lib/pinterest-production.js';
-import {
-  validateSinglePinJob,
-  computeContentHash,
-  stagePinImageToR2,
-  insertApprovedPinJob,
-  executeApprovedJob,
-} from '../lib/pinterest-publish.js';
+import { executeApprovedJob } from '../lib/pinterest-publish.js';
 import { PINTEREST_BOARD_ALIASES } from '../lib/pinterest-boards.js';
+import { ingestManifest, listJobs, cancelJob } from '../lib/pinterest-manifest.js';
 
 const app = new Hono();
 
@@ -837,101 +832,152 @@ app.post('/api/pinterest/proof', async (c) => {
   }
 });
 
-// ── Pinterest Phase B — single approved-Pin publishing (B1, BUILT NOT ACTIVATED) ─
+// ── Pinterest Phase B — approved cohort ingestion + internal API (B2, BUILT NOT
+//    ACTIVATED) ────────────────────────────────────────────────────────────────
 //
-// These two owner-only endpoints are the minimal seam needed to (a) create ONE
-// already-approved Pin job and (b) execute it immediately through the SAME shared
-// engine that the future scheduler (B3) will call. They are gated on the owner
-// session only (no new secret) and are NOT reachable through the generalized
-// API-key publish routes. Activation still requires approved Standard access +
-// a connected owner-prod account; until then execute-now has nothing to publish.
+// Canonical ingestion surface. One authenticated owner submission of a versioned
+// manifest (1..N approved pins + one image per pin) becomes immutable `approved` jobs
+// on `pinterest_publish_jobs`. Execution stays in the B1 engine (execute-now now,
+// cron in B3). ZERO live Pinterest calls happen here. These endpoints are NOT reachable
+// through the generalized `Bearer cp_...` API-key publish routes.
+//
+// Auth matrix:
+//   POST /jobs (submit manifest)        → CREATORPOST_INTERNAL_TOKEN ONLY (write)
+//   GET  /jobs (status)                 → internal token OR owner session
+//   POST /jobs/:id/cancel               → internal token OR owner session
+//   POST /jobs/:id/execute-now          → internal token OR owner session
+// Activation still requires approved Standard access + a connected owner-prod account.
 
-// Load the owner's production Pinterest account row (platform_user_id='owner-prod').
-async function loadOwnerProdPinterestAccount(c, userId) {
-  return c.env.DB.prepare(
-    "SELECT id, access_token, token_expires_at FROM connected_accounts WHERE user_id = ? AND platform = 'pinterest' AND platform_user_id = ?"
-  ).bind(userId, PINTEREST_PRODUCTION_PUID).first();
+// Constant-time secret compare over fixed-length SHA-256 digests (no length leak; the
+// Workers runtime has no timingSafeEqual). Fails closed on any missing/blank input.
+async function secretsEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length === 0 || b.length === 0) return false;
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ]);
+  const x = new Uint8Array(da), y = new Uint8Array(db);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
 }
 
-// (a) Create ONE approved single-Pin job. Multipart: a JSON `manifest` part (the
-// approved instruction) + one `image` file. No cohort/batch ingestion (that is B2).
-app.post('/api/internal/pinterest/jobs', async (c) => {
+// Dedicated internal-token auth for Pinterest ingestion. Fails closed when the secret
+// is unset or the Authorization header is missing/malformed. The token is never logged.
+async function hasInternalToken(c) {
+  const secret = c.env.CREATORPOST_INTERNAL_TOKEN;
+  if (!secret) return false;
+  const auth = c.req.header('Authorization') ?? '';
+  if (!auth.startsWith('Bearer ')) return false;
+  return secretsEqual(auth.slice(7), secret);
+}
+
+// Privileged @mattdonders.com browser session (read/cancel/execute convenience only).
+async function ownerSession(c) {
   const session = await getSession(c);
-  if (!session) return c.json({ error: 'Not authenticated' }, 401);
+  if (!session) return null;
   const email = await loadOwnerEmail(c, session.user_id);
-  if (!isPhaseAOwner(email)) return c.json({ error: 'Not available' }, 403);
+  return isPhaseAOwner(email) ? session : null;
+}
+
+// Load the single owner-prod Pinterest account (platform_user_id='owner-prod'). Jobs
+// must reference it (account_id NOT NULL); ingestion therefore requires B0 connect.
+async function loadOwnerProdPinterestAccount(c) {
+  return c.env.DB.prepare(
+    "SELECT id, user_id FROM connected_accounts WHERE platform = 'pinterest' AND platform_user_id = ? LIMIT 1"
+  ).bind(PINTEREST_PRODUCTION_PUID).first();
+}
+
+// (a) Submit ONE approved cohort manifest (internal token ONLY).
+app.post('/api/internal/pinterest/jobs', async (c) => {
+  if (!(await hasInternalToken(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
 
   let form;
   try { form = await c.req.formData(); }
-  catch { return c.json({ ok: false, error: 'expected multipart/form-data' }, 400); }
+  catch { return c.json({ ok: false, error: 'invalid_manifest', issues: [{ field: 'body', code: 'expected_multipart' }] }, 400); }
 
   const manifestRaw = form.get('manifest');
-  const image = form.get('image');
-  if (typeof manifestRaw !== 'string') return c.json({ ok: false, error: 'missing manifest part' }, 400);
-  if (!image || typeof image.arrayBuffer !== 'function') return c.json({ ok: false, error: 'missing image file' }, 400);
-
+  if (typeof manifestRaw !== 'string') return c.json({ ok: false, error: 'invalid_manifest', issues: [{ field: 'manifest', code: 'missing' }] }, 400);
   let manifest;
   try { manifest = JSON.parse(manifestRaw); }
-  catch { return c.json({ ok: false, error: 'manifest is not valid JSON' }, 400); }
+  catch { return c.json({ ok: false, error: 'invalid_manifest', issues: [{ field: 'manifest', code: 'not_json' }] }, 400); }
 
-  // Normalize the approved instruction. publish_at defaults to now (immediate).
-  const instruction = {
-    external_job_id: manifest.external_job_id,
-    source:          manifest.source,
-    manifest_id:     manifest.manifest_id,
-    board_alias:     manifest.board_alias,
-    title:           manifest.title ?? null,
-    description:     manifest.description ?? null,
-    link:            manifest.link ?? null,
-    alt_text:        manifest.alt_text ?? null,
-    ai_disclosure:   manifest.ai_disclosure ?? null,
-    publish_at:      Number.isInteger(manifest.publish_at) ? manifest.publish_at : now(),
-  };
-
-  const check = validateSinglePinJob(instruction);
-  if (!check.ok) return c.json({ ok: false, error: 'invalid_job', errors: check.errors }, 400);
-  if (!(instruction.board_alias in PINTEREST_BOARD_ALIASES)) {
-    return c.json({ ok: false, error: 'unknown_board_alias', board_alias: instruction.board_alias }, 400);
+  // Image parts are keyed `image:<external_job_id>` — association can never be guessed
+  // from upload order. Duplicate part-names for one job are rejected.
+  const images = {};
+  const duplicateImageKeys = [];
+  const seen = new Set();
+  for (const [key, value] of form.entries()) {
+    if (!key.startsWith('image:')) continue;
+    if (typeof value === 'string' || typeof value.arrayBuffer !== 'function') continue;
+    const ejid = key.slice(6);
+    if (seen.has(ejid)) { duplicateImageKeys.push(ejid); continue; }
+    seen.add(ejid);
+    const bytes = new Uint8Array(await value.arrayBuffer());
+    images[ejid] = { bytes, contentType: value.type, size: bytes.byteLength };
   }
 
-  const account = await loadOwnerProdPinterestAccount(c, session.user_id);
+  const account = await loadOwnerProdPinterestAccount(c);
   if (!account?.id) return c.json({ ok: false, error: 'pinterest_prod_not_connected' }, 409);
 
-  const jobId = newId();
-  let imageKey;
+  let result;
   try {
-    const bytes = new Uint8Array(await image.arrayBuffer());
-    imageKey = await stagePinImageToR2(c.env, jobId, bytes, image.type);
+    result = await ingestManifest(
+      {
+        DB: c.env.DB, bucket: c.env.MEDIA_BUCKET,
+        r2PublicBase: String(c.env.R2_PUBLIC_URL ?? '').replace(/\/$/, ''),
+        userId: account.user_id, accountId: account.id,
+        aliasMap: PINTEREST_BOARD_ALIASES, nowSec: now(),
+        log: (fields) => log(c, { type: 'event', ...fields }),
+      },
+      manifest, images, { duplicateImageKeys },
+    );
   } catch (err) {
-    return c.json({ ok: false, error: err.message === 'unsupported_image_type' ? 'unsupported_image_type' : 'image_stage_failed' }, 400);
+    log(c, { type: 'error', event: 'pinterest_ingest_error' });
+    return c.json({ ok: false, error: 'persistence_failed' }, 500);
   }
 
-  const job = {
-    id: jobId, ...instruction,
-    user_id: session.user_id, account_id: account.id, image_key: imageKey,
-    content_hash: await computeContentHash(instruction),
-  };
-
-  try {
-    await insertApprovedPinJob(c.env.DB, job, now());
-  } catch (err) {
-    if (/UNIQUE/i.test(err.message)) {
-      return c.json({ ok: false, error: 'duplicate_job', source: instruction.source, external_job_id: instruction.external_job_id }, 409);
-    }
-    log(c, { type: 'error', event: 'pinterest_job_insert_error', user_id: session.user_id });
-    return c.json({ ok: false, error: 'insert_failed' }, 500);
-  }
-
-  log(c, { type: 'event', event: 'pinterest_job_created', user_id: session.user_id, source: instruction.source });
-  return c.json({ ok: true, id: jobId, state: 'approved' }, 201);
+  log(c, {
+    type: 'event', event: 'pinterest_manifest_ingest',
+    manifest_id: manifest.manifest_id ?? null, source: manifest.source ?? null,
+    result: result.body?.status ?? result.body?.error ?? null, http_status: result.status,
+    job_count: result.body?.job_count ?? null,
+  });
+  return c.json(result.body, result.status);
 });
 
-// (b) Execute ONE approved job immediately via the shared claim+publish engine.
+// (b) Status/list with bounded filters (internal token OR owner session).
+app.get('/api/internal/pinterest/jobs', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+
+  const q = c.req.query();
+  const filters = {
+    state:        q.state || null,
+    source:       q.source || null,
+    manifest_id:  q.manifest_id || null,
+    upcoming:     q.upcoming === '1' || q.upcoming === 'true',
+    needs_review: q.needs_review === '1' || q.needs_review === 'true',
+  };
+  const jobs = await listJobs(c.env.DB, filters, now());
+  return c.json({ ok: true, count: jobs.length, jobs });
+});
+
+// (c) Cancel ONE unclaimed approved job (internal token OR owner session).
+app.post('/api/internal/pinterest/jobs/:id/cancel', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+
+  const outcome = await cancelJob(c.env.DB, c.req.param('id'));
+  if (outcome === 'not_found')      return c.json({ ok: false, error: 'not_found' }, 404);
+  if (outcome === 'not_cancelable') return c.json({ ok: false, error: 'cannot_cancel' }, 409);
+  log(c, { type: 'event', event: 'pinterest_job_canceled', job_id: c.req.param('id') });
+  return c.json({ ok: true, state: 'canceled' });
+});
+
+// (d) Execute ONE approved job immediately via the SAME shared B1 engine (internal
+// token OR owner session). Never executes a whole cohort; B2 acceptance ≠ publish.
 app.post('/api/internal/pinterest/jobs/:id/execute-now', async (c) => {
-  const session = await getSession(c);
-  if (!session) return c.json({ error: 'Not authenticated' }, 401);
-  const email = await loadOwnerEmail(c, session.user_id);
-  if (!isPhaseAOwner(email)) return c.json({ error: 'Not available' }, 403);
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
 
   const jobId = c.req.param('id');
   let summary;
@@ -941,11 +987,11 @@ app.post('/api/internal/pinterest/jobs/:id/execute-now', async (c) => {
       jobId,
     );
   } catch (err) {
-    log(c, { type: 'error', event: 'pinterest_execute_now_error', user_id: session.user_id });
+    log(c, { type: 'error', event: 'pinterest_execute_now_error' });
     return c.json({ ok: false, error: 'execute_failed' }, 500);
   }
 
-  log(c, { type: 'event', event: 'pinterest_execute_now', user_id: session.user_id, claimed: summary.claimed, state: summary.state ?? null });
+  log(c, { type: 'event', event: 'pinterest_execute_now', claimed: summary.claimed, state: summary.state ?? null });
   if (!summary.claimed) return c.json({ ok: false, claimed: false, reason: 'not_claimable' }, 409);
   return c.json({ ok: true, ...summary });
 });
