@@ -9,9 +9,18 @@ name: Pinterest publish due jobs
 # (2-57/5) keeps ~5-minute cadence while avoiding the top-of-hour congestion. Delayed or
 # dropped runs only DELAY publication — jobs stay `approved` until claimed, never lost.
 
+# ── ACTIVATION-SAFETY (Activation A, 2026-08-15) ──────────────────────────────
+# The `schedule:` trigger is intentionally DISABLED so this workflow stays inert
+# on the default branch. A GitHub `schedule:` cron activates the moment its file
+# reaches the default branch; disabling it here keeps the Pinterest publish path
+# fail-closed until the gated activation runbook explicitly enables it.
+#
+# TO RE-ENABLE (later, authorized activation only): uncomment the two `schedule:`
+# lines below. That single change re-arms the ~5-minute cron. Do NOT re-enable
+# before CRON_SECRET is set in production and Pinterest Standard access is live.
 on:
-  schedule:
-    - cron: '2-57/5 * * * *'   # ~every 5 minutes, off the top of the hour (UTC)
+  # schedule:
+  #   - cron: '2-57/5 * * * *'   # ~every 5 minutes, off the top of the hour (UTC)
   workflow_dispatch:            # manual trigger (controlled activation proof only)
 
 jobs:
