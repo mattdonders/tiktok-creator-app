@@ -52,7 +52,13 @@ Reuses the incumbent privileged-action convention: `email.endsWith('@mattdonders
 
 ## Persistence & logging behavior
 
-- Stores **only** CreatorPost's own OAuth token in `connected_accounts`, under a **CreatorPost-generated sentinel** `platform_user_id = 'phase-a-sandbox-proof'`. This is **not** a Pinterest identifier; it exists solely to satisfy the `NOT NULL` + `UNIQUE(user_id, platform, platform_user_id)` shape without a schema migration. Reconciliation/replacement with a real Pinterest identifier is an explicit **Phase B** concern.
+- Stores **only** CreatorPost's own OAuth **access token** in `connected_accounts`, under a **CreatorPost-generated sentinel** `platform_user_id = 'phase-a-sandbox-proof'`. This is **not** a Pinterest identifier; it exists solely to satisfy the `NOT NULL` + `UNIQUE(user_id, platform, platform_user_id)` shape without a schema migration. Reconciliation/replacement with a real Pinterest identifier is an explicit **Phase B** concern.
+- **The Pinterest `refresh_token` is deliberately NOT persisted.** Phase A (T1) has no refresh behavior; `connected_accounts.refresh_token` is written `NULL` on both insert and conflict-update. Only the access token and `token_expires_at` are stored.
+- The proof board is created with `privacy: 'PUBLIC'` — a normal Sandbox board authorized by the `boards:write` scope. SECRET boards would require a scope Phase A does not request; there is no scope/privacy mismatch.
+- `assertSandboxUrl()` requires **both** `https:` protocol **and** host `api-sandbox.pinterest.com`; an `http://` downgrade or any other host is refused before any fetch.
+- **CSRF (proof POST):** the `cp_session` cookie is `SameSite=Lax` / `Secure` / `HttpOnly`, so it is not sent on cross-site POSTs. A forged cross-origin `POST /api/pinterest/proof` arrives unauthenticated and is rejected (401). No per-route CSRF token added; global auth unchanged.
+- **OAuth state RNG:** `newId()` = `crypto.randomUUID()` (Web Crypto), a cryptographically secure source — suitable for the CSRF `state` nonce.
+- **Callback ordering:** OAuth `state` is verified **before** any provider-supplied `error`/`code` is processed (fail-closed). The raw provider `error` value is never logged; a local generic `provider_error` category is recorded instead.
 - All Pinterest **profile** columns (`display_name`, `avatar_url`, `username`, etc.) are left `NULL`. No Pinterest profile endpoint is ever called.
 - The proof action creates a board id **in memory only** and never persists it; it discards the Pin id/URL and every other Pinterest-returned identifier. The response to the browser is only `{ ok, http_status }`.
 - **No `posts` row is written.** No cron, scheduler, or api-key path is involved (`POST /api/pinterest/proof` uses the session cookie via `getSession`, not `getApiKeySession`).

@@ -40,6 +40,10 @@ test('assertSandboxUrl refuses the production Pinterest host', () => {
   assert.throws(() => assertSandboxUrl('https://api.pinterest.com/v5/pins'), /non-Sandbox/);
 });
 
+test('assertSandboxUrl refuses non-HTTPS (http) Sandbox host', () => {
+  assert.throws(() => assertSandboxUrl(`http://${PINTEREST_SANDBOX_HOST}/v5/pins`), /non-HTTPS/);
+});
+
 test('assertSandboxUrl refuses look-alike / subdomain-spoof hosts', () => {
   assert.throws(() => assertSandboxUrl('https://api-sandbox.pinterest.com.evil.com/v5/pins'), /non-Sandbox/);
   assert.throws(() => assertSandboxUrl('https://evil.com/api-sandbox.pinterest.com'), /non-Sandbox/);

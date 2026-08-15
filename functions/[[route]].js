@@ -511,13 +511,16 @@ app.get('/callback/pinterest', async (c) => {
   // Always clear the one-time state cookie.
   deleteCookie(c, PINTEREST_STATE_COOKIE, { path: '/' });
 
-  if (error) {
-    log(c, { type: 'error', event: 'pinterest_oauth_error', reason: error });
-    return c.redirect('/account?pinterest=error');
-  }
+  // Validate state FIRST — before trusting any provider-supplied error/code.
+  // Missing/mismatched state fails closed.
   if (!verifyOAuthState(cookieState, queryState)) {
     log(c, { type: 'error', event: 'pinterest_oauth_error', reason: 'invalid_state' });
     return c.redirect('/account?pinterest=invalid_state');
+  }
+  if (error) {
+    // Do NOT log the raw provider error value; record a local generic category.
+    log(c, { type: 'error', event: 'pinterest_oauth_error', reason: 'provider_error' });
+    return c.redirect('/account?pinterest=error');
   }
   if (!code) {
     log(c, { type: 'error', event: 'pinterest_oauth_error', reason: 'no_code' });
@@ -544,19 +547,21 @@ app.get('/callback/pinterest', async (c) => {
   const expiresAt = tokenData.expires_in ? now() + tokenData.expires_in : null;
 
   try {
+    // Phase A (T1) has no refresh behavior — deliberately DO NOT persist the
+    // Pinterest refresh_token. Store only the access token + expiry; leave
+    // connected_accounts.refresh_token NULL.
     await c.env.DB.prepare(`
       INSERT INTO connected_accounts
         (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, refresh_token, token_expires_at, created_at)
-      VALUES (?, ?, 'pinterest', ?, NULL, NULL, ?, ?, ?, ?)
+      VALUES (?, ?, 'pinterest', ?, NULL, NULL, ?, NULL, ?, ?)
       ON CONFLICT(user_id, platform, platform_user_id) DO UPDATE SET
         access_token     = excluded.access_token,
-        refresh_token    = CASE WHEN excluded.refresh_token IS NOT NULL THEN excluded.refresh_token ELSE connected_accounts.refresh_token END,
+        refresh_token    = NULL,
         token_expires_at = excluded.token_expires_at
     `).bind(
       accountId, session.user_id,
       PINTEREST_SENTINEL_PUID,
       tokenData.access_token,
-      tokenData.refresh_token ?? null,
       expiresAt,
       now()
     ).run();
@@ -565,10 +570,10 @@ app.get('/callback/pinterest', async (c) => {
     return c.redirect('/account?pinterest=db_failed');
   }
 
-  // Log booleans/expiry only — never the token itself.
+  // Log expiry metadata only — never the token, and no refresh token is stored.
   log(c, {
     type: 'event', event: 'pinterest_sandbox_connected', user_id: session.user_id,
-    has_refresh: !!tokenData.refresh_token, token_expires_at: expiresAt,
+    token_expires_at: expiresAt,
   });
   return c.redirect('/account?pinterest=connected');
 });
@@ -577,6 +582,11 @@ app.get('/callback/pinterest', async (c) => {
 // Sandbox board if needed, then exactly ONE Sandbox image Pin. Single attempt,
 // no retry. Returns only {ok, http_status} — never a Pin id/url. Writes no
 // posts row; discards all Pinterest-returned identifiers.
+//
+// CSRF: the cp_session cookie is SameSite=Lax (see sessionCookie()), so it is
+// NOT sent on cross-site POSTs. A forged cross-origin POST here arrives without
+// the session cookie and is rejected as unauthenticated (401). No additional
+// per-route CSRF token is required for this state-changing POST.
 app.post('/api/pinterest/proof', async (c) => {
   const session = await getSession(c);
   if (!session) return c.json({ error: 'Not authenticated' }, 401);
@@ -612,7 +622,10 @@ app.post('/api/pinterest/proof', async (c) => {
       const boardRes = await fetch(createUrl, {
         method:  'POST',
         headers: { ...authHeader, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name: 'CreatorPost Sandbox Proof', privacy: 'SECRET' }),
+        // PUBLIC: a normal Sandbox board authorized by boards:write. SECRET boards
+        // require a scope Phase A does not request. Sandbox-only isolation is
+        // unchanged (this board exists solely in api-sandbox.pinterest.com).
+        body:    JSON.stringify({ name: 'CreatorPost Sandbox Proof', privacy: 'PUBLIC' }),
       });
       if (!boardRes.ok) {
         log(c, { type: 'error', event: 'pinterest_proof_board_failed', user_id: session.user_id, http_status: boardRes.status });
