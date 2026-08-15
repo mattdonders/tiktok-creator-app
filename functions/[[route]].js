@@ -21,6 +21,7 @@ import {
 import { executeApprovedJob } from '../lib/pinterest-publish.js';
 import { PINTEREST_BOARD_ALIASES } from '../lib/pinterest-boards.js';
 import { ingestManifest, listJobs, cancelJob } from '../lib/pinterest-manifest.js';
+import { loadPinterestConnectionStatus } from '../lib/pinterest-connection.js';
 import { refreshExpiredPinterestTokens } from '../lib/pinterest-token.js';
 import { runPublishDue } from '../lib/pinterest-scheduler.js';
 
@@ -846,6 +847,7 @@ app.post('/api/pinterest/proof', async (c) => {
 // Auth matrix:
 //   POST /jobs (submit manifest)        → CREATORPOST_INTERNAL_TOKEN ONLY (write)
 //   GET  /jobs (status)                 → internal token OR owner session
+//   GET  /connection (connection status)→ internal token OR owner session
 //   POST /jobs/:id/cancel               → internal token OR owner session
 //   POST /jobs/:id/execute-now          → internal token OR owner session
 // Activation still requires approved Standard access + a connected owner-prod account.
@@ -963,6 +965,14 @@ app.get('/api/internal/pinterest/jobs', async (c) => {
   };
   const jobs = await listJobs(c.env.DB, filters, now());
   return c.json({ ok: true, count: jobs.length, jobs });
+});
+
+// (b2) Sanitized production connection status (internal token OR owner session). Backed by
+// the single owner-prod `connected_accounts` row; exposes NO token value or Pinterest data.
+app.get('/api/internal/pinterest/connection', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+  const status = await loadPinterestConnectionStatus(c.env.DB, now());
+  return c.json(status);
 });
 
 // (c) Cancel ONE unclaimed approved job (internal token OR owner session).
