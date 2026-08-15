@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "wrangler pages dev public --binding DB=DB",
-    "deploy": "wrangler pages deploy public"
+    "deploy": "wrangler pages deploy public",
+    "test": "node --test"
   },
   "dependencies": {
     "hono": "^4.6.0"

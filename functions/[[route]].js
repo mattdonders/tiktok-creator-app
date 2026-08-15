@@ -5,6 +5,12 @@
 
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import {
+  verifyOAuthState,
+  assertSandboxUrl,
+  PINTEREST_SANDBOX_HOST,
+  PINTEREST_PROOF_IMAGE_BASE64,
+} from '../lib/pinterest-sandbox.js';
 
 const app = new Hono();
 
@@ -429,6 +435,223 @@ app.get('/callback/youtube', async (c) => {
 
   log(c, { type: 'event', event: 'youtube_connected', user_id: userId, channel_id: channel.id ?? null, granted_scope: tokenData.scope ?? null });
   return c.redirect('/dashboard');
+});
+
+// ── Pinterest OAuth — PHASE A SANDBOX APPROVAL-PROOF ONLY ───────────────────────
+//
+// Purpose: produce the demo required by a later Pinterest Standard-access
+// application. Owner-only. Sandbox-only. Persists NO Pinterest content/profile.
+// Production Pinterest (api.pinterest.com) is intentionally ABSENT from this
+// code path. See docs/pinterest-phase-a-implementation.md. NOT production
+// publishing; NOT Phase B.
+//
+// Sandbox isolation: a Sandbox token cannot be used against production and vice
+// versa, so contacting only api-sandbox.pinterest.com is inherently fail-closed.
+// assertSandboxUrl() re-checks the host before every token/API fetch.
+
+const PINTEREST_AUTHORIZE_URL     = 'https://www.pinterest.com/oauth/'; // shared auth host (expected)
+const PINTEREST_SANDBOX_TOKEN_URL = `https://${PINTEREST_SANDBOX_HOST}/v5/oauth/token`;
+const PINTEREST_SANDBOX_API_BASE  = `https://${PINTEREST_SANDBOX_HOST}/v5`;
+const PINTEREST_SCOPES            = 'boards:read,boards:write,pins:read,pins:write';
+const PINTEREST_STATE_COOKIE      = 'pinterest_oauth_state';
+// CreatorPost-generated sentinel — NOT a Pinterest identifier. Satisfies the
+// connected_accounts NOT NULL/UNIQUE(user_id,platform,platform_user_id) shape
+// without storing Pinterest data. Reconciliation is a Phase B concern.
+const PINTEREST_SENTINEL_PUID     = 'phase-a-sandbox-proof';
+
+// Reuses the incumbent @mattdonders.com privileged-action convention. No new RBAC.
+function isPhaseAOwner(email) {
+  return typeof email === 'string' && email.endsWith('@mattdonders.com');
+}
+
+async function loadOwnerEmail(c, userId) {
+  const user = await c.env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(userId).first();
+  return user?.email ?? null;
+}
+
+// Begin owner-only Sandbox OAuth. Secure random state stored in a short-lived
+// HttpOnly cookie for fail-closed CSRF verification at the callback.
+app.get('/auth/pinterest', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.text('Pinterest Sandbox proof is not available', 403);
+
+  if (!c.env.PINTEREST_CLIENT_ID) return c.text('Pinterest not configured', 503);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/pinterest`;
+  const state       = newId();
+
+  setCookie(c, PINTEREST_STATE_COOKIE, state, {
+    httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 600, path: '/',
+  });
+
+  const params = new URLSearchParams({
+    client_id:     c.env.PINTEREST_CLIENT_ID,
+    redirect_uri:  redirectUri,
+    response_type: 'code',
+    scope:         PINTEREST_SCOPES,
+    state,
+  });
+
+  return c.redirect(`${PINTEREST_AUTHORIZE_URL}?${params}`);
+});
+
+// Verify state (fail-closed), exchange code for a SANDBOX token, and store ONLY
+// our own OAuth token under a sentinel puid. Never calls a profile endpoint;
+// leaves every Pinterest-profile column NULL.
+app.get('/callback/pinterest', async (c) => {
+  const code        = c.req.query('code');
+  const queryState  = c.req.query('state') ?? '';
+  const error       = c.req.query('error');
+  const cookieState = getCookie(c, PINTEREST_STATE_COOKIE) ?? '';
+
+  // Always clear the one-time state cookie.
+  deleteCookie(c, PINTEREST_STATE_COOKIE, { path: '/' });
+
+  if (error) {
+    log(c, { type: 'error', event: 'pinterest_oauth_error', reason: error });
+    return c.redirect('/account?pinterest=error');
+  }
+  if (!verifyOAuthState(cookieState, queryState)) {
+    log(c, { type: 'error', event: 'pinterest_oauth_error', reason: 'invalid_state' });
+    return c.redirect('/account?pinterest=invalid_state');
+  }
+  if (!code) {
+    log(c, { type: 'error', event: 'pinterest_oauth_error', reason: 'no_code' });
+    return c.redirect('/account?pinterest=no_code');
+  }
+
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.text('Pinterest Sandbox proof is not available', 403);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/pinterest`;
+
+  let tokenData;
+  try {
+    tokenData = await exchangePinterestSandboxCode(code, redirectUri, c.env);
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_token_exchange_failed', message: err.message, user_id: session.user_id });
+    return c.redirect('/account?pinterest=token_failed');
+  }
+
+  const accountId = newId();
+  const expiresAt = tokenData.expires_in ? now() + tokenData.expires_in : null;
+
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO connected_accounts
+        (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, refresh_token, token_expires_at, created_at)
+      VALUES (?, ?, 'pinterest', ?, NULL, NULL, ?, ?, ?, ?)
+      ON CONFLICT(user_id, platform, platform_user_id) DO UPDATE SET
+        access_token     = excluded.access_token,
+        refresh_token    = CASE WHEN excluded.refresh_token IS NOT NULL THEN excluded.refresh_token ELSE connected_accounts.refresh_token END,
+        token_expires_at = excluded.token_expires_at
+    `).bind(
+      accountId, session.user_id,
+      PINTEREST_SENTINEL_PUID,
+      tokenData.access_token,
+      tokenData.refresh_token ?? null,
+      expiresAt,
+      now()
+    ).run();
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_connect_failed', message: err.message, user_id: session.user_id });
+    return c.redirect('/account?pinterest=db_failed');
+  }
+
+  // Log booleans/expiry only — never the token itself.
+  log(c, {
+    type: 'event', event: 'pinterest_sandbox_connected', user_id: session.user_id,
+    has_refresh: !!tokenData.refresh_token, token_expires_at: expiresAt,
+  });
+  return c.redirect('/account?pinterest=connected');
+});
+
+// Owner-only, session-authed (NOT api-key) explicit proof action. Creates one
+// Sandbox board if needed, then exactly ONE Sandbox image Pin. Single attempt,
+// no retry. Returns only {ok, http_status} — never a Pin id/url. Writes no
+// posts row; discards all Pinterest-returned identifiers.
+app.post('/api/pinterest/proof', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'Not authenticated' }, 401);
+
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.json({ error: 'Not available' }, 403);
+
+  const account = await c.env.DB.prepare(
+    "SELECT access_token FROM connected_accounts WHERE user_id = ? AND platform = 'pinterest' AND platform_user_id = ?"
+  ).bind(session.user_id, PINTEREST_SENTINEL_PUID).first();
+
+  if (!account?.access_token) {
+    return c.json({ ok: false, error: 'Pinterest Sandbox not connected' }, 400);
+  }
+
+  const authHeader = { Authorization: `Bearer ${account.access_token}` };
+
+  // 1) Find or create a Sandbox board (board name required to create a Pin).
+  let boardId = null;
+  try {
+    const listUrl = `${PINTEREST_SANDBOX_API_BASE}/boards?page_size=25`;
+    assertSandboxUrl(listUrl);
+    const listRes = await fetch(listUrl, { headers: authHeader });
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const existing = (listData.items ?? []).find((b) => b.name === 'CreatorPost Sandbox Proof');
+      if (existing) boardId = existing.id;
+    }
+
+    if (!boardId) {
+      const createUrl = `${PINTEREST_SANDBOX_API_BASE}/boards`;
+      assertSandboxUrl(createUrl);
+      const boardRes = await fetch(createUrl, {
+        method:  'POST',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ name: 'CreatorPost Sandbox Proof', privacy: 'SECRET' }),
+      });
+      if (!boardRes.ok) {
+        log(c, { type: 'error', event: 'pinterest_proof_board_failed', user_id: session.user_id, http_status: boardRes.status });
+        return c.json({ ok: false, step: 'board', http_status: boardRes.status }, 502);
+      }
+      const boardData = await boardRes.json();
+      boardId = boardData.id; // in-memory only; never persisted
+    }
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_proof_board_error', user_id: session.user_id, message: err.message });
+    return c.json({ ok: false, step: 'board', error: 'board_error' }, 502);
+  }
+
+  // 2) Create exactly ONE Sandbox image Pin — single attempt, no retry.
+  try {
+    const pinUrl = `${PINTEREST_SANDBOX_API_BASE}/pins`;
+    assertSandboxUrl(pinUrl);
+    const pinRes = await fetch(pinUrl, {
+      method:  'POST',
+      headers: { ...authHeader, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        board_id:     boardId,
+        title:        'CreatorPost Sandbox Proof',
+        media_source: { source_type: 'image_base64', content_type: 'image/png', data: PINTEREST_PROOF_IMAGE_BASE64 },
+      }),
+    });
+
+    // Discard the response body/identifiers; report only status.
+    if (!pinRes.ok) {
+      log(c, { type: 'error', event: 'pinterest_proof_pin_failed', user_id: session.user_id, http_status: pinRes.status });
+      return c.json({ ok: false, step: 'pin', http_status: pinRes.status }, 502);
+    }
+
+    log(c, { type: 'event', event: 'pinterest_sandbox_proof_ok', user_id: session.user_id, http_status: pinRes.status });
+    return c.json({ ok: true, http_status: pinRes.status });
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_proof_pin_error', user_id: session.user_id, message: err.message });
+    return c.json({ ok: false, step: 'pin', error: 'pin_error' }, 502);
+  }
 });
 
 // ── Instagram OAuth ────────────────────────────────────────────────────────────
@@ -1565,6 +1788,33 @@ async function exchangeGoogleCode(code, redirectUri, env) {
     body:    params.toString(),
   });
   if (!res.ok) throw new Error(`Google token error: ${await res.text()}`);
+  return res.json();
+}
+
+// Pinterest Phase A — exchange an authorization code for a SANDBOX token.
+// Pinterest v5 uses HTTP Basic auth (client_id:client_secret) and does NOT
+// support PKCE. assertSandboxUrl() guarantees the target is the Sandbox host.
+// The secret is read from env only; never logged, printed, or persisted.
+async function exchangePinterestSandboxCode(code, redirectUri, env) {
+  assertSandboxUrl(PINTEREST_SANDBOX_TOKEN_URL);
+  if (!env.PINTEREST_CLIENT_ID || !env.PINTEREST_CLIENT_SECRET) {
+    throw new Error('Pinterest not configured');
+  }
+  const basic  = btoa(`${env.PINTEREST_CLIENT_ID}:${env.PINTEREST_CLIENT_SECRET}`);
+  const params = new URLSearchParams({
+    grant_type:   'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  });
+  const res = await fetch(PINTEREST_SANDBOX_TOKEN_URL, {
+    method:  'POST',
+    headers: {
+      Authorization:  `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+  if (!res.ok) throw new Error(`Pinterest token error: ${res.status}`);
   return res.json();
 }
 

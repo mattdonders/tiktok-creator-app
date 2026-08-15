@@ -248,6 +248,22 @@
       </div>
     </div>
 
+    <!-- Pinterest Sandbox (owner-only, Phase A approval-proof) -->
+    <div class="profile-card" id="pinterest-sandbox-card" style="display:none;border-color:#e60023">
+      <div class="card-section-title" style="margin-bottom:0.4rem">
+        Pinterest Sandbox <span style="font-size:0.7rem;color:var(--muted);font-weight:600">· TEST · owner-only</span>
+      </div>
+      <p style="font-size:0.82rem;color:var(--muted);margin:0 0 1rem;line-height:1.5">
+        Phase A approval-proof only. Connects to Pinterest's <strong>Sandbox</strong> environment
+        (never production) and creates one test Pin on demand. No Pinterest content or profile data is stored.
+      </p>
+      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        <a href="/auth/pinterest" class="btn btn-outline" style="font-size:0.8rem;color:#e60023;border-color:#e60023">Connect Pinterest (Sandbox · Test)</a>
+        <button id="pinterest-proof-btn" class="btn btn-primary" style="font-size:0.8rem" onclick="runPinterestProof()">Run Pinterest Sandbox Proof</button>
+        <span id="pinterest-proof-status" style="font-size:0.82rem;color:var(--muted)"></span>
+      </div>
+    </div>
+
     <!-- Hashtag Sets -->
     <div class="profile-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.75rem">
@@ -318,6 +334,35 @@
       alert('Stats cache cleared — reload the dashboard to fetch fresh stats.');
     }
 
+    // Reflect the ?pinterest=… OAuth callback result (owner-only Sandbox flow).
+    function showPinterestConnectResult() {
+      const status = new URLSearchParams(window.location.search).get('pinterest');
+      if (!status) return;
+      const el = document.getElementById('pinterest-proof-status');
+      if (status === 'connected') { el.style.color = '#22c55e'; el.textContent = 'Sandbox connected ✓'; }
+      else { el.style.color = '#f87171'; el.textContent = 'Sandbox connect failed: ' + status; }
+    }
+
+    // Owner-only: trigger exactly one Sandbox proof Pin. Never exposes tokens.
+    async function runPinterestProof() {
+      const btn = document.getElementById('pinterest-proof-btn');
+      const el  = document.getElementById('pinterest-proof-status');
+      btn.disabled = true;
+      el.style.color = 'var(--muted)';
+      el.textContent = 'Running Sandbox proof…';
+      try {
+        const res  = await fetch('/api/pinterest/proof', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.ok) { el.style.color = '#22c55e'; el.textContent = 'Sandbox proof succeeded ✓ (HTTP ' + data.http_status + ')'; }
+        else { el.style.color = '#f87171'; el.textContent = 'Sandbox proof failed: ' + (data.error || ('step ' + (data.step || '?') + ', HTTP ' + (data.http_status || res.status))); }
+      } catch (err) {
+        el.style.color = '#f87171';
+        el.textContent = 'Sandbox proof error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     function escHtml(s) {
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
@@ -338,7 +383,11 @@
       user     = data.user     ?? {};
       accounts = data.accounts ?? [];
       isDev    = !!user.email?.endsWith('@mattdonders.com');
-      if (isDev) document.getElementById('sync-all-btn').style.display = '';
+      if (isDev) {
+        document.getElementById('sync-all-btn').style.display = '';
+        document.getElementById('pinterest-sandbox-card').style.display = '';
+        showPinterestConnectResult();
+      }
 
       document.getElementById('field-email').textContent    = user.email ?? '—';
       document.getElementById('field-display-name').value   = user.display_name ?? '';
