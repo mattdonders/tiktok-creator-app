@@ -11,6 +11,13 @@ import {
   PINTEREST_SANDBOX_HOST,
   PINTEREST_PROOF_IMAGE_BASE64,
 } from '../lib/pinterest-sandbox.js';
+import {
+  assertProductionUrl,
+  planProductionConnect,
+  PINTEREST_PRODUCTION_HOST,
+  PINTEREST_PRODUCTION_PUID,
+  PINTEREST_SANDBOX_SENTINEL_PUID,
+} from '../lib/pinterest-production.js';
 
 const app = new Hono();
 
@@ -459,6 +466,22 @@ const PINTEREST_STATE_COOKIE      = 'pinterest_oauth_state';
 // without storing Pinterest data. Reconciliation is a Phase B concern.
 const PINTEREST_SENTINEL_PUID     = 'phase-a-sandbox-proof';
 
+// ── Pinterest PRODUCTION OAuth (Phase B, slice B0 — BUILT, NOT ACTIVATED) ──────
+// Production twin of the Sandbox flow above. Same Pinterest app + same
+// PINTEREST_CLIENT_ID/SECRET (Trial→Standard tier promotion); only the API host
+// differs. assertProductionUrl() locks every production fetch to
+// api.pinterest.com and fails closed against the Sandbox host, mirroring the way
+// the Sandbox flow fails closed against production. The production callback reuses
+// the SAME registered redirect URI (/callback/pinterest) but a DISTINCT state
+// cookie, so no Pinterest-dashboard redirect change is required and the Phase A
+// callback logic is left untouched (it delegates only when the prod cookie is set).
+//
+// NOTE: the CreatorPost Pinterest app was created after 2025-09-25, so Pinterest
+// issues continuous (indefinitely-refreshable, 60-day) refresh tokens
+// automatically — the token request does NOT pass continuous_refresh=true.
+const PINTEREST_PRODUCTION_TOKEN_URL = `https://${PINTEREST_PRODUCTION_HOST}/v5/oauth/token`;
+const PINTEREST_PROD_STATE_COOKIE    = 'pinterest_prod_oauth_state';
+
 // Reuses the incumbent @mattdonders.com privileged-action convention. No new RBAC.
 function isPhaseAOwner(email) {
   return typeof email === 'string' && email.endsWith('@mattdonders.com');
@@ -503,6 +526,13 @@ app.get('/auth/pinterest', async (c) => {
 // our own OAuth token under a sentinel puid. Never calls a profile endpoint;
 // leaves every Pinterest-profile column NULL.
 app.get('/callback/pinterest', async (c) => {
+  // Production and Sandbox share this one registered redirect URI. A production
+  // flow is the one that set the distinct prod state cookie; delegate to the
+  // production handler in that case and leave the Phase A logic below untouched.
+  if (getCookie(c, PINTEREST_PROD_STATE_COOKIE)) {
+    return handlePinterestProductionCallback(c);
+  }
+
   const code        = c.req.query('code');
   const queryState  = c.req.query('state') ?? '';
   const error       = c.req.query('error');
@@ -577,6 +607,138 @@ app.get('/callback/pinterest', async (c) => {
   });
   return c.redirect('/account?pinterest=connected');
 });
+
+// ── Pinterest PRODUCTION OAuth routes (Phase B, slice B0 — BUILT, NOT ACTIVATED) ─
+//
+// ACTIVATION: these paths are live in code but are only reached deliberately by the
+// owner navigating to /auth/pinterest/production after Standard access is granted.
+// No UI links to them (smallest diff — see the B0 report). During BUILD they are
+// never invoked: no browser OAuth, no real code exchange, no production token or
+// Pin, no production D1 mutation.
+
+// Begin owner-only PRODUCTION OAuth. Same authorize host, scopes, and registered
+// redirect URI as Sandbox; distinguished only by the prod state cookie so the
+// shared callback can route it. Secure random state → short-lived HttpOnly cookie.
+app.get('/auth/pinterest/production', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.text('Pinterest production connect is not available', 403);
+
+  if (!c.env.PINTEREST_CLIENT_ID) return c.text('Pinterest not configured', 503);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/pinterest`;
+  const state       = newId();
+
+  setCookie(c, PINTEREST_PROD_STATE_COOKIE, state, {
+    httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 600, path: '/',
+  });
+
+  const params = new URLSearchParams({
+    client_id:     c.env.PINTEREST_CLIENT_ID,
+    redirect_uri:  redirectUri,
+    response_type: 'code',
+    scope:         PINTEREST_SCOPES,
+    state,
+  });
+
+  return c.redirect(`${PINTEREST_AUTHORIZE_URL}?${params}`);
+});
+
+// Production callback. Reached via the shared /callback/pinterest route when the
+// prod state cookie is present. Verifies state (fail-closed) FIRST, exchanges the
+// code for a PRODUCTION token, and REQUIRES a rotating refresh_token (unlike Phase
+// A, which stored NULL) — a durable Phase B connection cannot survive without one.
+// On success, atomically upserts the owner-prod account row AND retires the Phase A
+// sandbox sentinel in a single D1 transaction. Never logs tokens.
+async function handlePinterestProductionCallback(c) {
+  const code        = c.req.query('code');
+  const queryState  = c.req.query('state') ?? '';
+  const error       = c.req.query('error');
+  const cookieState = getCookie(c, PINTEREST_PROD_STATE_COOKIE) ?? '';
+
+  // Always clear the one-time prod state cookie.
+  deleteCookie(c, PINTEREST_PROD_STATE_COOKIE, { path: '/' });
+
+  // Validate state FIRST — before trusting any provider-supplied error/code.
+  if (!verifyOAuthState(cookieState, queryState)) {
+    log(c, { type: 'error', event: 'pinterest_prod_oauth_error', reason: 'invalid_state' });
+    return c.redirect('/account?pinterest=invalid_state');
+  }
+  if (error) {
+    log(c, { type: 'error', event: 'pinterest_prod_oauth_error', reason: 'provider_error' });
+    return c.redirect('/account?pinterest=error');
+  }
+  if (!code) {
+    log(c, { type: 'error', event: 'pinterest_prod_oauth_error', reason: 'no_code' });
+    return c.redirect('/account?pinterest=no_code');
+  }
+
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.text('Pinterest production connect is not available', 403);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/pinterest`;
+
+  let tokenData;
+  try {
+    tokenData = await exchangePinterestProductionCode(code, redirectUri, c.env);
+  } catch (err) {
+    // Generic category only — never the raw provider response/body. Token
+    // exchange failure short-circuits here, BEFORE any D1 mutation, so the Phase A
+    // sandbox sentinel is left intact.
+    log(c, { type: 'error', event: 'pinterest_prod_token_exchange_failed', message: err.message, user_id: session.user_id });
+    return c.redirect('/account?pinterest=token_failed');
+  }
+
+  // Production requires a rotating refresh token. A missing/blank one is treated as
+  // NOT connected: perform no DB write, and leave the sandbox sentinel untouched.
+  const plan = planProductionConnect(tokenData, {
+    userId: session.user_id, accountId: newId(), nowSec: now(),
+  });
+  if (!plan.ok) {
+    log(c, { type: 'error', event: 'pinterest_prod_missing_refresh_token', user_id: session.user_id });
+    return c.redirect('/account?pinterest=no_refresh_token');
+  }
+
+  const r = plan.row;
+  try {
+    // Atomic: upsert the owner-prod row AND retire the sandbox sentinel in ONE
+    // transaction. D1 batch() is all-or-nothing, so the sentinel is never removed
+    // unless the production row is written in the same commit.
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        INSERT INTO connected_accounts
+          (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, refresh_token, token_expires_at, created_at)
+        VALUES (?, ?, 'pinterest', ?, NULL, NULL, ?, ?, ?, ?)
+        ON CONFLICT(user_id, platform, platform_user_id) DO UPDATE SET
+          access_token     = excluded.access_token,
+          refresh_token    = excluded.refresh_token,
+          token_expires_at = excluded.token_expires_at
+      `).bind(
+        r.id, r.user_id, r.platform_user_id,
+        r.access_token, r.refresh_token, r.token_expires_at, r.created_at,
+      ),
+      c.env.DB.prepare(
+        "DELETE FROM connected_accounts WHERE user_id = ? AND platform = 'pinterest' AND platform_user_id = ?"
+      ).bind(r.user_id, plan.deleteSentinelPuid),
+    ]);
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_prod_connect_failed', message: err.message, user_id: session.user_id });
+    return c.redirect('/account?pinterest=db_failed');
+  }
+
+  // Expiry metadata only — never the access or refresh token.
+  log(c, {
+    type: 'event', event: 'pinterest_production_connected', user_id: session.user_id,
+    token_expires_at: r.token_expires_at,
+  });
+  return c.redirect('/account?pinterest=production_connected');
+}
 
 // Owner-only, session-authed (NOT api-key) explicit proof action. Creates one
 // Sandbox board if needed, then exactly ONE Sandbox image Pin. Single attempt,
@@ -1820,6 +1982,37 @@ async function exchangePinterestSandboxCode(code, redirectUri, env) {
     redirect_uri: redirectUri,
   });
   const res = await fetch(PINTEREST_SANDBOX_TOKEN_URL, {
+    method:  'POST',
+    headers: {
+      Authorization:  `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+  if (!res.ok) throw new Error(`Pinterest token error: ${res.status}`);
+  return res.json();
+}
+
+// Pinterest Phase B (B0) — exchange an authorization code for a PRODUCTION token.
+// Identical shape to the Sandbox exchange (same app, HTTP Basic auth, no PKCE),
+// but assertProductionUrl() locks the target to api.pinterest.com and fails closed
+// against the Sandbox host. Same PINTEREST_CLIENT_ID/SECRET (Trial→Standard tier
+// promotion). continuous_refresh is NOT passed: the app was created after
+// 2025-09-25, so Pinterest returns a continuous refresh token automatically.
+// The secret is read from env only; never logged, printed, or persisted. Only the
+// HTTP status is surfaced on failure — never the raw response body.
+async function exchangePinterestProductionCode(code, redirectUri, env) {
+  assertProductionUrl(PINTEREST_PRODUCTION_TOKEN_URL);
+  if (!env.PINTEREST_CLIENT_ID || !env.PINTEREST_CLIENT_SECRET) {
+    throw new Error('Pinterest not configured');
+  }
+  const basic  = btoa(`${env.PINTEREST_CLIENT_ID}:${env.PINTEREST_CLIENT_SECRET}`);
+  const params = new URLSearchParams({
+    grant_type:   'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  });
+  const res = await fetch(PINTEREST_PRODUCTION_TOKEN_URL, {
     method:  'POST',
     headers: {
       Authorization:  `Basic ${basic}`,
