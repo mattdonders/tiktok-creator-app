@@ -18,6 +18,14 @@ import {
   PINTEREST_PRODUCTION_PUID,
   PINTEREST_SANDBOX_SENTINEL_PUID,
 } from '../lib/pinterest-production.js';
+import {
+  validateSinglePinJob,
+  computeContentHash,
+  stagePinImageToR2,
+  insertApprovedPinJob,
+  executeApprovedJob,
+} from '../lib/pinterest-publish.js';
+import { PINTEREST_BOARD_ALIASES } from '../lib/pinterest-boards.js';
 
 const app = new Hono();
 
@@ -827,6 +835,119 @@ app.post('/api/pinterest/proof', async (c) => {
     log(c, { type: 'error', event: 'pinterest_proof_pin_error', user_id: session.user_id, message: err.message });
     return c.json({ ok: false, step: 'pin', error: 'pin_error' }, 502);
   }
+});
+
+// ── Pinterest Phase B — single approved-Pin publishing (B1, BUILT NOT ACTIVATED) ─
+//
+// These two owner-only endpoints are the minimal seam needed to (a) create ONE
+// already-approved Pin job and (b) execute it immediately through the SAME shared
+// engine that the future scheduler (B3) will call. They are gated on the owner
+// session only (no new secret) and are NOT reachable through the generalized
+// API-key publish routes. Activation still requires approved Standard access +
+// a connected owner-prod account; until then execute-now has nothing to publish.
+
+// Load the owner's production Pinterest account row (platform_user_id='owner-prod').
+async function loadOwnerProdPinterestAccount(c, userId) {
+  return c.env.DB.prepare(
+    "SELECT id, access_token, token_expires_at FROM connected_accounts WHERE user_id = ? AND platform = 'pinterest' AND platform_user_id = ?"
+  ).bind(userId, PINTEREST_PRODUCTION_PUID).first();
+}
+
+// (a) Create ONE approved single-Pin job. Multipart: a JSON `manifest` part (the
+// approved instruction) + one `image` file. No cohort/batch ingestion (that is B2).
+app.post('/api/internal/pinterest/jobs', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'Not authenticated' }, 401);
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.json({ error: 'Not available' }, 403);
+
+  let form;
+  try { form = await c.req.formData(); }
+  catch { return c.json({ ok: false, error: 'expected multipart/form-data' }, 400); }
+
+  const manifestRaw = form.get('manifest');
+  const image = form.get('image');
+  if (typeof manifestRaw !== 'string') return c.json({ ok: false, error: 'missing manifest part' }, 400);
+  if (!image || typeof image.arrayBuffer !== 'function') return c.json({ ok: false, error: 'missing image file' }, 400);
+
+  let manifest;
+  try { manifest = JSON.parse(manifestRaw); }
+  catch { return c.json({ ok: false, error: 'manifest is not valid JSON' }, 400); }
+
+  // Normalize the approved instruction. publish_at defaults to now (immediate).
+  const instruction = {
+    external_job_id: manifest.external_job_id,
+    source:          manifest.source,
+    manifest_id:     manifest.manifest_id,
+    board_alias:     manifest.board_alias,
+    title:           manifest.title ?? null,
+    description:     manifest.description ?? null,
+    link:            manifest.link ?? null,
+    alt_text:        manifest.alt_text ?? null,
+    ai_disclosure:   manifest.ai_disclosure ?? null,
+    publish_at:      Number.isInteger(manifest.publish_at) ? manifest.publish_at : now(),
+  };
+
+  const check = validateSinglePinJob(instruction);
+  if (!check.ok) return c.json({ ok: false, error: 'invalid_job', errors: check.errors }, 400);
+  if (!(instruction.board_alias in PINTEREST_BOARD_ALIASES)) {
+    return c.json({ ok: false, error: 'unknown_board_alias', board_alias: instruction.board_alias }, 400);
+  }
+
+  const account = await loadOwnerProdPinterestAccount(c, session.user_id);
+  if (!account?.id) return c.json({ ok: false, error: 'pinterest_prod_not_connected' }, 409);
+
+  const jobId = newId();
+  let imageKey;
+  try {
+    const bytes = new Uint8Array(await image.arrayBuffer());
+    imageKey = await stagePinImageToR2(c.env, jobId, bytes, image.type);
+  } catch (err) {
+    return c.json({ ok: false, error: err.message === 'unsupported_image_type' ? 'unsupported_image_type' : 'image_stage_failed' }, 400);
+  }
+
+  const job = {
+    id: jobId, ...instruction,
+    user_id: session.user_id, account_id: account.id, image_key: imageKey,
+    content_hash: await computeContentHash(instruction),
+  };
+
+  try {
+    await insertApprovedPinJob(c.env.DB, job, now());
+  } catch (err) {
+    if (/UNIQUE/i.test(err.message)) {
+      return c.json({ ok: false, error: 'duplicate_job', source: instruction.source, external_job_id: instruction.external_job_id }, 409);
+    }
+    log(c, { type: 'error', event: 'pinterest_job_insert_error', user_id: session.user_id });
+    return c.json({ ok: false, error: 'insert_failed' }, 500);
+  }
+
+  log(c, { type: 'event', event: 'pinterest_job_created', user_id: session.user_id, source: instruction.source });
+  return c.json({ ok: true, id: jobId, state: 'approved' }, 201);
+});
+
+// (b) Execute ONE approved job immediately via the shared claim+publish engine.
+app.post('/api/internal/pinterest/jobs/:id/execute-now', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: 'Not authenticated' }, 401);
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.json({ error: 'Not available' }, 403);
+
+  const jobId = c.req.param('id');
+  let summary;
+  try {
+    summary = await executeApprovedJob(
+      { DB: c.env.DB, env: c.env, aliasMap: PINTEREST_BOARD_ALIASES, nowSec: now() },
+      jobId,
+    );
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_execute_now_error', user_id: session.user_id });
+    return c.json({ ok: false, error: 'execute_failed' }, 500);
+  }
+
+  log(c, { type: 'event', event: 'pinterest_execute_now', user_id: session.user_id, claimed: summary.claimed, state: summary.state ?? null });
+  if (!summary.claimed) return c.json({ ok: false, claimed: false, reason: 'not_claimable' }, 409);
+  return c.json({ ok: true, ...summary });
 });
 
 // ── Instagram OAuth ────────────────────────────────────────────────────────────
