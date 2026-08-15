@@ -21,6 +21,8 @@ import {
 import { executeApprovedJob } from '../lib/pinterest-publish.js';
 import { PINTEREST_BOARD_ALIASES } from '../lib/pinterest-boards.js';
 import { ingestManifest, listJobs, cancelJob } from '../lib/pinterest-manifest.js';
+import { refreshExpiredPinterestTokens } from '../lib/pinterest-token.js';
+import { runPublishDue } from '../lib/pinterest-scheduler.js';
 
 const app = new Hono();
 
@@ -3166,12 +3168,61 @@ app.post('/api/cron/refresh-tokens', async (c) => {
   const auth = c.req.header('Authorization') ?? '';
   if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
 
-  const [tiktok, instagram] = await Promise.all([
+  // Pinterest production refresh reuses the SAME shared implementation as the
+  // publish-time safety check (lib/pinterest-token.js). Added alongside the incumbent
+  // TikTok/Instagram refreshers WITHOUT changing their behavior. Never throws.
+  const [tiktok, instagram, pinterest] = await Promise.all([
     refreshExpiredTikTokTokens(c.env),
     refreshExpiredInstagramTokens(c.env),
+    refreshExpiredPinterestTokens({ DB: c.env.DB, env: c.env, nowSec: now() })
+      .catch(() => ({ refreshed: 0, status: 'error' })),
   ]);
-  log(c, { type: 'event', event: 'cron_token_refresh', tiktok, instagram });
-  return c.json({ ok: true, tiktok, instagram });
+  if (pinterest?.alert) {
+    c.executionCtx.waitUntil(sendDiscordAlert(c, {
+      platform: 'Pinterest', event: pinterest.alert.event, account_name: 'owner-prod',
+      error_code: pinterest.alert.error_category, attempts: 0,
+      title: '🔑 Pinterest reconnect required',
+    }));
+  }
+  log(c, { type: 'event', event: 'cron_token_refresh', tiktok, instagram, pinterest: pinterest?.status ?? null });
+  return c.json({ ok: true, tiktok, instagram, pinterest: pinterest?.status ?? null });
+});
+
+// ── POST /api/cron/publish-due ───────────────────────────────────────────────
+// Mechanical scheduled executor (GitHub Actions `*/5` → this route). Auth: Bearer
+// CRON_SECRET ONLY — deliberately NOT the owner session, NOT a `cp_` API key, NOT the
+// CREATORPOST_INTERNAL_TOKEN. It finds bounded due `approved` jobs and runs each through
+// the SAME B1 engine execute-now uses; it creates no Pin itself and remains inert until
+// the workflow is enabled and CRON_SECRET is set in production.
+app.post('/api/cron/publish-due', async (c) => {
+  const secret = c.env.CRON_SECRET;
+  if (!secret) return c.json({ error: 'not_configured' }, 503);
+  const auth = c.req.header('Authorization') ?? '';
+  if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
+
+  let out;
+  try {
+    out = await runPublishDue({
+      DB: c.env.DB, env: c.env, aliasMap: PINTEREST_BOARD_ALIASES, nowSec: now(),
+    });
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_publish_due_error' });
+    return c.json({ ok: false, error: 'executor_failed' }, 500);
+  }
+
+  // Emit only human-attention alerts (stale claim, needs_review, reconnect). Never for
+  // success / no-op / already-claimed. Sanitized local data only — no tokens/Pinterest IDs.
+  for (const a of out.alerts) {
+    c.executionCtx.waitUntil(sendDiscordAlert(c, {
+      platform: 'Pinterest', event: a.event,
+      account_name: a.job?.source ?? 'owner-prod',
+      post_id: a.job?.external_job_id ?? null,
+      error_code: a.error_category ?? 'unknown', attempts: 0,
+      title: `⚠️ Pinterest publish needs attention`,
+    }));
+  }
+  log(c, { type: 'event', event: 'cron_publish_due', ...out.summary });
+  return c.json({ ok: true, ...out.summary });
 });
 
 // ── Export for Cloudflare Pages ───────────────────────────────────────────────
