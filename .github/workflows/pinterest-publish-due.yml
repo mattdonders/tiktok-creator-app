@@ -19,8 +19,8 @@ name: Pinterest publish due jobs
 # lines below. That single change re-arms the ~5-minute cron. Do NOT re-enable
 # before CRON_SECRET is set in production and Pinterest Standard access is live.
 on:
-  # schedule:
-  #   - cron: '2-57/5 * * * *'   # ~every 5 minutes, off the top of the hour (UTC)
+  schedule:
+    - cron: '2-57/5 * * * *'   # ~every 5 minutes, off the top of the hour (UTC)
   workflow_dispatch:            # manual trigger (controlled activation proof only)
 
 jobs:
