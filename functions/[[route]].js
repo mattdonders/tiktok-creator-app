@@ -11,6 +11,19 @@ import {
   PINTEREST_SANDBOX_HOST,
   PINTEREST_PROOF_IMAGE_BASE64,
 } from '../lib/pinterest-sandbox.js';
+import {
+  assertProductionUrl,
+  planProductionConnect,
+  PINTEREST_PRODUCTION_HOST,
+  PINTEREST_PRODUCTION_PUID,
+  PINTEREST_SANDBOX_SENTINEL_PUID,
+} from '../lib/pinterest-production.js';
+import { executeApprovedJob } from '../lib/pinterest-publish.js';
+import { PINTEREST_BOARD_ALIASES } from '../lib/pinterest-boards.js';
+import { ingestManifest, listJobs, cancelJob } from '../lib/pinterest-manifest.js';
+import { loadPinterestConnectionStatus } from '../lib/pinterest-connection.js';
+import { refreshExpiredPinterestTokens } from '../lib/pinterest-token.js';
+import { runPublishDue } from '../lib/pinterest-scheduler.js';
 
 const app = new Hono();
 
@@ -459,6 +472,22 @@ const PINTEREST_STATE_COOKIE      = 'pinterest_oauth_state';
 // without storing Pinterest data. Reconciliation is a Phase B concern.
 const PINTEREST_SENTINEL_PUID     = 'phase-a-sandbox-proof';
 
+// ── Pinterest PRODUCTION OAuth (Phase B, slice B0 — BUILT, NOT ACTIVATED) ──────
+// Production twin of the Sandbox flow above. Same Pinterest app + same
+// PINTEREST_CLIENT_ID/SECRET (Trial→Standard tier promotion); only the API host
+// differs. assertProductionUrl() locks every production fetch to
+// api.pinterest.com and fails closed against the Sandbox host, mirroring the way
+// the Sandbox flow fails closed against production. The production callback reuses
+// the SAME registered redirect URI (/callback/pinterest) but a DISTINCT state
+// cookie, so no Pinterest-dashboard redirect change is required and the Phase A
+// callback logic is left untouched (it delegates only when the prod cookie is set).
+//
+// NOTE: the CreatorPost Pinterest app was created after 2025-09-25, so Pinterest
+// issues continuous (indefinitely-refreshable, 60-day) refresh tokens
+// automatically — the token request does NOT pass continuous_refresh=true.
+const PINTEREST_PRODUCTION_TOKEN_URL = `https://${PINTEREST_PRODUCTION_HOST}/v5/oauth/token`;
+const PINTEREST_PROD_STATE_COOKIE    = 'pinterest_prod_oauth_state';
+
 // Reuses the incumbent @mattdonders.com privileged-action convention. No new RBAC.
 function isPhaseAOwner(email) {
   return typeof email === 'string' && email.endsWith('@mattdonders.com');
@@ -503,6 +532,13 @@ app.get('/auth/pinterest', async (c) => {
 // our own OAuth token under a sentinel puid. Never calls a profile endpoint;
 // leaves every Pinterest-profile column NULL.
 app.get('/callback/pinterest', async (c) => {
+  // Production and Sandbox share this one registered redirect URI. A production
+  // flow is the one that set the distinct prod state cookie; delegate to the
+  // production handler in that case and leave the Phase A logic below untouched.
+  if (getCookie(c, PINTEREST_PROD_STATE_COOKIE)) {
+    return handlePinterestProductionCallback(c);
+  }
+
   const code        = c.req.query('code');
   const queryState  = c.req.query('state') ?? '';
   const error       = c.req.query('error');
@@ -577,6 +613,138 @@ app.get('/callback/pinterest', async (c) => {
   });
   return c.redirect('/account?pinterest=connected');
 });
+
+// ── Pinterest PRODUCTION OAuth routes (Phase B, slice B0 — BUILT, NOT ACTIVATED) ─
+//
+// ACTIVATION: these paths are live in code but are only reached deliberately by the
+// owner navigating to /auth/pinterest/production after Standard access is granted.
+// No UI links to them (smallest diff — see the B0 report). During BUILD they are
+// never invoked: no browser OAuth, no real code exchange, no production token or
+// Pin, no production D1 mutation.
+
+// Begin owner-only PRODUCTION OAuth. Same authorize host, scopes, and registered
+// redirect URI as Sandbox; distinguished only by the prod state cookie so the
+// shared callback can route it. Secure random state → short-lived HttpOnly cookie.
+app.get('/auth/pinterest/production', async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.text('Pinterest production connect is not available', 403);
+
+  if (!c.env.PINTEREST_CLIENT_ID) return c.text('Pinterest not configured', 503);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/pinterest`;
+  const state       = newId();
+
+  setCookie(c, PINTEREST_PROD_STATE_COOKIE, state, {
+    httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 600, path: '/',
+  });
+
+  const params = new URLSearchParams({
+    client_id:     c.env.PINTEREST_CLIENT_ID,
+    redirect_uri:  redirectUri,
+    response_type: 'code',
+    scope:         PINTEREST_SCOPES,
+    state,
+  });
+
+  return c.redirect(`${PINTEREST_AUTHORIZE_URL}?${params}`);
+});
+
+// Production callback. Reached via the shared /callback/pinterest route when the
+// prod state cookie is present. Verifies state (fail-closed) FIRST, exchanges the
+// code for a PRODUCTION token, and REQUIRES a rotating refresh_token (unlike Phase
+// A, which stored NULL) — a durable Phase B connection cannot survive without one.
+// On success, atomically upserts the owner-prod account row AND retires the Phase A
+// sandbox sentinel in a single D1 transaction. Never logs tokens.
+async function handlePinterestProductionCallback(c) {
+  const code        = c.req.query('code');
+  const queryState  = c.req.query('state') ?? '';
+  const error       = c.req.query('error');
+  const cookieState = getCookie(c, PINTEREST_PROD_STATE_COOKIE) ?? '';
+
+  // Always clear the one-time prod state cookie.
+  deleteCookie(c, PINTEREST_PROD_STATE_COOKIE, { path: '/' });
+
+  // Validate state FIRST — before trusting any provider-supplied error/code.
+  if (!verifyOAuthState(cookieState, queryState)) {
+    log(c, { type: 'error', event: 'pinterest_prod_oauth_error', reason: 'invalid_state' });
+    return c.redirect('/account?pinterest=invalid_state');
+  }
+  if (error) {
+    log(c, { type: 'error', event: 'pinterest_prod_oauth_error', reason: 'provider_error' });
+    return c.redirect('/account?pinterest=error');
+  }
+  if (!code) {
+    log(c, { type: 'error', event: 'pinterest_prod_oauth_error', reason: 'no_code' });
+    return c.redirect('/account?pinterest=no_code');
+  }
+
+  const session = await getSession(c);
+  if (!session) return c.redirect('/login');
+  const email = await loadOwnerEmail(c, session.user_id);
+  if (!isPhaseAOwner(email)) return c.text('Pinterest production connect is not available', 403);
+
+  const origin      = new URL(c.req.url).origin;
+  const redirectUri = `${origin}/callback/pinterest`;
+
+  let tokenData;
+  try {
+    tokenData = await exchangePinterestProductionCode(code, redirectUri, c.env);
+  } catch (err) {
+    // Generic category only — never the raw provider response/body. Token
+    // exchange failure short-circuits here, BEFORE any D1 mutation, so the Phase A
+    // sandbox sentinel is left intact.
+    log(c, { type: 'error', event: 'pinterest_prod_token_exchange_failed', message: err.message, user_id: session.user_id });
+    return c.redirect('/account?pinterest=token_failed');
+  }
+
+  // Production requires a rotating refresh token. A missing/blank one is treated as
+  // NOT connected: perform no DB write, and leave the sandbox sentinel untouched.
+  const plan = planProductionConnect(tokenData, {
+    userId: session.user_id, accountId: newId(), nowSec: now(),
+  });
+  if (!plan.ok) {
+    log(c, { type: 'error', event: 'pinterest_prod_missing_refresh_token', user_id: session.user_id });
+    return c.redirect('/account?pinterest=no_refresh_token');
+  }
+
+  const r = plan.row;
+  try {
+    // Atomic: upsert the owner-prod row AND retire the sandbox sentinel in ONE
+    // transaction. D1 batch() is all-or-nothing, so the sentinel is never removed
+    // unless the production row is written in the same commit.
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        INSERT INTO connected_accounts
+          (id, user_id, platform, platform_user_id, display_name, avatar_url, access_token, refresh_token, token_expires_at, created_at)
+        VALUES (?, ?, 'pinterest', ?, NULL, NULL, ?, ?, ?, ?)
+        ON CONFLICT(user_id, platform, platform_user_id) DO UPDATE SET
+          access_token     = excluded.access_token,
+          refresh_token    = excluded.refresh_token,
+          token_expires_at = excluded.token_expires_at
+      `).bind(
+        r.id, r.user_id, r.platform_user_id,
+        r.access_token, r.refresh_token, r.token_expires_at, r.created_at,
+      ),
+      c.env.DB.prepare(
+        "DELETE FROM connected_accounts WHERE user_id = ? AND platform = 'pinterest' AND platform_user_id = ?"
+      ).bind(r.user_id, plan.deleteSentinelPuid),
+    ]);
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_prod_connect_failed', message: err.message, user_id: session.user_id });
+    return c.redirect('/account?pinterest=db_failed');
+  }
+
+  // Expiry metadata only — never the access or refresh token.
+  log(c, {
+    type: 'event', event: 'pinterest_production_connected', user_id: session.user_id,
+    token_expires_at: r.token_expires_at,
+  });
+  return c.redirect('/account?pinterest=production_connected');
+}
 
 // Owner-only, session-authed (NOT api-key) explicit proof action. Creates one
 // Sandbox board if needed, then exactly ONE Sandbox image Pin. Single attempt,
@@ -665,6 +833,179 @@ app.post('/api/pinterest/proof', async (c) => {
     log(c, { type: 'error', event: 'pinterest_proof_pin_error', user_id: session.user_id, message: err.message });
     return c.json({ ok: false, step: 'pin', error: 'pin_error' }, 502);
   }
+});
+
+// ── Pinterest Phase B — approved cohort ingestion + internal API (B2, BUILT NOT
+//    ACTIVATED) ────────────────────────────────────────────────────────────────
+//
+// Canonical ingestion surface. One authenticated owner submission of a versioned
+// manifest (1..N approved pins + one image per pin) becomes immutable `approved` jobs
+// on `pinterest_publish_jobs`. Execution stays in the B1 engine (execute-now now,
+// cron in B3). ZERO live Pinterest calls happen here. These endpoints are NOT reachable
+// through the generalized `Bearer cp_...` API-key publish routes.
+//
+// Auth matrix:
+//   POST /jobs (submit manifest)        → CREATORPOST_INTERNAL_TOKEN ONLY (write)
+//   GET  /jobs (status)                 → internal token OR owner session
+//   GET  /connection (connection status)→ internal token OR owner session
+//   POST /jobs/:id/cancel               → internal token OR owner session
+//   POST /jobs/:id/execute-now          → internal token OR owner session
+// Activation still requires approved Standard access + a connected owner-prod account.
+
+// Constant-time secret compare over fixed-length SHA-256 digests (no length leak; the
+// Workers runtime has no timingSafeEqual). Fails closed on any missing/blank input.
+async function secretsEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length === 0 || b.length === 0) return false;
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ]);
+  const x = new Uint8Array(da), y = new Uint8Array(db);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
+// Dedicated internal-token auth for Pinterest ingestion. Fails closed when the secret
+// is unset or the Authorization header is missing/malformed. The token is never logged.
+async function hasInternalToken(c) {
+  const secret = c.env.CREATORPOST_INTERNAL_TOKEN;
+  if (!secret) return false;
+  const auth = c.req.header('Authorization') ?? '';
+  if (!auth.startsWith('Bearer ')) return false;
+  return secretsEqual(auth.slice(7), secret);
+}
+
+// Privileged @mattdonders.com browser session (read/cancel/execute convenience only).
+async function ownerSession(c) {
+  const session = await getSession(c);
+  if (!session) return null;
+  const email = await loadOwnerEmail(c, session.user_id);
+  return isPhaseAOwner(email) ? session : null;
+}
+
+// Load the single owner-prod Pinterest account (platform_user_id='owner-prod'). Jobs
+// must reference it (account_id NOT NULL); ingestion therefore requires B0 connect.
+async function loadOwnerProdPinterestAccount(c) {
+  return c.env.DB.prepare(
+    "SELECT id, user_id FROM connected_accounts WHERE platform = 'pinterest' AND platform_user_id = ? LIMIT 1"
+  ).bind(PINTEREST_PRODUCTION_PUID).first();
+}
+
+// (a) Submit ONE approved cohort manifest (internal token ONLY).
+app.post('/api/internal/pinterest/jobs', async (c) => {
+  if (!(await hasInternalToken(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+
+  let form;
+  try { form = await c.req.formData(); }
+  catch { return c.json({ ok: false, error: 'invalid_manifest', issues: [{ field: 'body', code: 'expected_multipart' }] }, 400); }
+
+  const manifestRaw = form.get('manifest');
+  if (typeof manifestRaw !== 'string') return c.json({ ok: false, error: 'invalid_manifest', issues: [{ field: 'manifest', code: 'missing' }] }, 400);
+  let manifest;
+  try { manifest = JSON.parse(manifestRaw); }
+  catch { return c.json({ ok: false, error: 'invalid_manifest', issues: [{ field: 'manifest', code: 'not_json' }] }, 400); }
+
+  // Image parts are keyed `image:<external_job_id>` — association can never be guessed
+  // from upload order. Duplicate part-names for one job are rejected.
+  const images = {};
+  const duplicateImageKeys = [];
+  const seen = new Set();
+  for (const [key, value] of form.entries()) {
+    if (!key.startsWith('image:')) continue;
+    if (typeof value === 'string' || typeof value.arrayBuffer !== 'function') continue;
+    const ejid = key.slice(6);
+    if (seen.has(ejid)) { duplicateImageKeys.push(ejid); continue; }
+    seen.add(ejid);
+    const bytes = new Uint8Array(await value.arrayBuffer());
+    images[ejid] = { bytes, contentType: value.type, size: bytes.byteLength };
+  }
+
+  const account = await loadOwnerProdPinterestAccount(c);
+  if (!account?.id) return c.json({ ok: false, error: 'pinterest_prod_not_connected' }, 409);
+
+  let result;
+  try {
+    result = await ingestManifest(
+      {
+        DB: c.env.DB, bucket: c.env.MEDIA_BUCKET,
+        r2PublicBase: String(c.env.R2_PUBLIC_URL ?? '').replace(/\/$/, ''),
+        userId: account.user_id, accountId: account.id,
+        aliasMap: PINTEREST_BOARD_ALIASES, nowSec: now(),
+        log: (fields) => log(c, { type: 'event', ...fields }),
+      },
+      manifest, images, { duplicateImageKeys },
+    );
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_ingest_error' });
+    return c.json({ ok: false, error: 'persistence_failed' }, 500);
+  }
+
+  log(c, {
+    type: 'event', event: 'pinterest_manifest_ingest',
+    manifest_id: manifest.manifest_id ?? null, source: manifest.source ?? null,
+    result: result.body?.status ?? result.body?.error ?? null, http_status: result.status,
+    job_count: result.body?.job_count ?? null,
+  });
+  return c.json(result.body, result.status);
+});
+
+// (b) Status/list with bounded filters (internal token OR owner session).
+app.get('/api/internal/pinterest/jobs', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+
+  const q = c.req.query();
+  const filters = {
+    state:        q.state || null,
+    source:       q.source || null,
+    manifest_id:  q.manifest_id || null,
+    upcoming:     q.upcoming === '1' || q.upcoming === 'true',
+    needs_review: q.needs_review === '1' || q.needs_review === 'true',
+  };
+  const jobs = await listJobs(c.env.DB, filters, now());
+  return c.json({ ok: true, count: jobs.length, jobs });
+});
+
+// (b2) Sanitized production connection status (internal token OR owner session). Backed by
+// the single owner-prod `connected_accounts` row; exposes NO token value or Pinterest data.
+app.get('/api/internal/pinterest/connection', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+  const status = await loadPinterestConnectionStatus(c.env.DB, now());
+  return c.json(status);
+});
+
+// (c) Cancel ONE unclaimed approved job (internal token OR owner session).
+app.post('/api/internal/pinterest/jobs/:id/cancel', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+
+  const outcome = await cancelJob(c.env.DB, c.req.param('id'));
+  if (outcome === 'not_found')      return c.json({ ok: false, error: 'not_found' }, 404);
+  if (outcome === 'not_cancelable') return c.json({ ok: false, error: 'cannot_cancel' }, 409);
+  log(c, { type: 'event', event: 'pinterest_job_canceled', job_id: c.req.param('id') });
+  return c.json({ ok: true, state: 'canceled' });
+});
+
+// (d) Execute ONE approved job immediately via the SAME shared B1 engine (internal
+// token OR owner session). Never executes a whole cohort; B2 acceptance ≠ publish.
+app.post('/api/internal/pinterest/jobs/:id/execute-now', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+
+  const jobId = c.req.param('id');
+  let summary;
+  try {
+    summary = await executeApprovedJob(
+      { DB: c.env.DB, env: c.env, aliasMap: PINTEREST_BOARD_ALIASES, nowSec: now() },
+      jobId,
+    );
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_execute_now_error' });
+    return c.json({ ok: false, error: 'execute_failed' }, 500);
+  }
+
+  log(c, { type: 'event', event: 'pinterest_execute_now', claimed: summary.claimed, state: summary.state ?? null });
+  if (!summary.claimed) return c.json({ ok: false, claimed: false, reason: 'not_claimable' }, 409);
+  return c.json({ ok: true, ...summary });
 });
 
 // ── Instagram OAuth ────────────────────────────────────────────────────────────
@@ -1831,6 +2172,37 @@ async function exchangePinterestSandboxCode(code, redirectUri, env) {
   return res.json();
 }
 
+// Pinterest Phase B (B0) — exchange an authorization code for a PRODUCTION token.
+// Identical shape to the Sandbox exchange (same app, HTTP Basic auth, no PKCE),
+// but assertProductionUrl() locks the target to api.pinterest.com and fails closed
+// against the Sandbox host. Same PINTEREST_CLIENT_ID/SECRET (Trial→Standard tier
+// promotion). continuous_refresh is NOT passed: the app was created after
+// 2025-09-25, so Pinterest returns a continuous refresh token automatically.
+// The secret is read from env only; never logged, printed, or persisted. Only the
+// HTTP status is surfaced on failure — never the raw response body.
+async function exchangePinterestProductionCode(code, redirectUri, env) {
+  assertProductionUrl(PINTEREST_PRODUCTION_TOKEN_URL);
+  if (!env.PINTEREST_CLIENT_ID || !env.PINTEREST_CLIENT_SECRET) {
+    throw new Error('Pinterest not configured');
+  }
+  const basic  = btoa(`${env.PINTEREST_CLIENT_ID}:${env.PINTEREST_CLIENT_SECRET}`);
+  const params = new URLSearchParams({
+    grant_type:   'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  });
+  const res = await fetch(PINTEREST_PRODUCTION_TOKEN_URL, {
+    method:  'POST',
+    headers: {
+      Authorization:  `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+  if (!res.ok) throw new Error(`Pinterest token error: ${res.status}`);
+  return res.json();
+}
+
 async function refreshGoogleToken(refreshToken, env) {
   const params = new URLSearchParams({
     client_id:     env.GOOGLE_CLIENT_ID,
@@ -2806,12 +3178,61 @@ app.post('/api/cron/refresh-tokens', async (c) => {
   const auth = c.req.header('Authorization') ?? '';
   if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
 
-  const [tiktok, instagram] = await Promise.all([
+  // Pinterest production refresh reuses the SAME shared implementation as the
+  // publish-time safety check (lib/pinterest-token.js). Added alongside the incumbent
+  // TikTok/Instagram refreshers WITHOUT changing their behavior. Never throws.
+  const [tiktok, instagram, pinterest] = await Promise.all([
     refreshExpiredTikTokTokens(c.env),
     refreshExpiredInstagramTokens(c.env),
+    refreshExpiredPinterestTokens({ DB: c.env.DB, env: c.env, nowSec: now() })
+      .catch(() => ({ refreshed: 0, status: 'error' })),
   ]);
-  log(c, { type: 'event', event: 'cron_token_refresh', tiktok, instagram });
-  return c.json({ ok: true, tiktok, instagram });
+  if (pinterest?.alert) {
+    c.executionCtx.waitUntil(sendDiscordAlert(c, {
+      platform: 'Pinterest', event: pinterest.alert.event, account_name: 'owner-prod',
+      error_code: pinterest.alert.error_category, attempts: 0,
+      title: '🔑 Pinterest reconnect required',
+    }));
+  }
+  log(c, { type: 'event', event: 'cron_token_refresh', tiktok, instagram, pinterest: pinterest?.status ?? null });
+  return c.json({ ok: true, tiktok, instagram, pinterest: pinterest?.status ?? null });
+});
+
+// ── POST /api/cron/publish-due ───────────────────────────────────────────────
+// Mechanical scheduled executor (GitHub Actions `*/5` → this route). Auth: Bearer
+// CRON_SECRET ONLY — deliberately NOT the owner session, NOT a `cp_` API key, NOT the
+// CREATORPOST_INTERNAL_TOKEN. It finds bounded due `approved` jobs and runs each through
+// the SAME B1 engine execute-now uses; it creates no Pin itself and remains inert until
+// the workflow is enabled and CRON_SECRET is set in production.
+app.post('/api/cron/publish-due', async (c) => {
+  const secret = c.env.CRON_SECRET;
+  if (!secret) return c.json({ error: 'not_configured' }, 503);
+  const auth = c.req.header('Authorization') ?? '';
+  if (auth !== `Bearer ${secret}`) return c.json({ error: 'unauthorized' }, 401);
+
+  let out;
+  try {
+    out = await runPublishDue({
+      DB: c.env.DB, env: c.env, aliasMap: PINTEREST_BOARD_ALIASES, nowSec: now(),
+    });
+  } catch (err) {
+    log(c, { type: 'error', event: 'pinterest_publish_due_error' });
+    return c.json({ ok: false, error: 'executor_failed' }, 500);
+  }
+
+  // Emit only human-attention alerts (stale claim, needs_review, reconnect). Never for
+  // success / no-op / already-claimed. Sanitized local data only — no tokens/Pinterest IDs.
+  for (const a of out.alerts) {
+    c.executionCtx.waitUntil(sendDiscordAlert(c, {
+      platform: 'Pinterest', event: a.event,
+      account_name: a.job?.source ?? 'owner-prod',
+      post_id: a.job?.external_job_id ?? null,
+      error_code: a.error_category ?? 'unknown', attempts: 0,
+      title: `⚠️ Pinterest publish needs attention`,
+    }));
+  }
+  log(c, { type: 'event', event: 'cron_publish_due', ...out.summary });
+  return c.json({ ok: true, ...out.summary });
 });
 
 // ── Export for Cloudflare Pages ───────────────────────────────────────────────
