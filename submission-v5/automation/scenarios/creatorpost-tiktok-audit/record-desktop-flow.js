@@ -263,6 +263,16 @@ async function main() {
     });
     await page.waitForTimeout(DWELL.disclosureOptsOpen); // reviewer: read Your Brand / Branded Content options
 
+    // The disclosure-opts panel expanding grows the page past the fixed
+    // recording viewport, pushing #submit-btn out of frame even though the
+    // DOM-level assertions below (isDisabled/isVisible) don't check scroll
+    // position and pass regardless. Scroll it into view now so the disabled
+    // button + its guidance are actually visible in the recorded video for
+    // the whole disclosure demo — subsequent .check()/.uncheck() calls on
+    // the nearby checkboxes won't re-scroll since they're already in view
+    // from this position.
+    await page.locator('#submit-btn').scrollIntoViewIfNeeded();
+
     // Item 6: with disclosure ON and neither choice selected, Publish is
     // proactively DISABLED (dashboard.html updateSubmitBtn()/
     // disclosureNeedsBrandChoice()) with explanatory guidance visible —
@@ -296,6 +306,7 @@ async function main() {
     // reference to the Branded Content Policy.
     await page.locator('#tiktok-brand-organic').uncheck();
     await page.locator('#tiktok-brand-content').check();
+    await page.locator('#submit-btn').scrollIntoViewIfNeeded(); // keep it in frame after the checkbox interactions above
     await assertState('"Branded content" labeled as Paid partnership', async () => {
       const text = await page.locator('#disclosure-label').innerText().catch(() => '');
       return /paid partnership/i.test(text);
@@ -328,6 +339,7 @@ async function main() {
     // own label plus the combined policy declaration, not just the Branded
     // Content-only text.
     await page.locator('#tiktok-brand-organic').check();
+    await page.locator('#submit-btn').scrollIntoViewIfNeeded(); // keep it in frame after the checkbox interaction above
     await assertState('both-selected state labeled as combined disclosure', async () => {
       const text = await page.locator('#disclosure-label').innerText().catch(() => '');
       return /promotional content and paid partnership/i.test(text);
