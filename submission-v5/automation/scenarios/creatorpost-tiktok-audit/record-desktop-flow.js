@@ -205,11 +205,15 @@ async function main() {
     // Select the truthful final privacy level now — needed so the later
     // disclosure-choice validation attempt (item 6) fails for the reason
     // we're demonstrating (missing brand choice), not for missing privacy.
-    // Item 7: pick the MOST RESTRICTIVE option offered, not the first one —
-    // unaudited Direct Post must not be shown posting as Public.
+    // Item 7 / PM final decision: CreatorPost is still an unaudited Direct
+    // Post client, so the real submission must use Only Me/SELF_ONLY, never
+    // Public — pickMostRestrictivePrivacy already orders SELF_ONLY first,
+    // but we assert the literal value here rather than just "non-empty" so
+    // this requirement can't silently regress if creator_info's option list
+    // ever changes shape.
     await pickMostRestrictivePrivacy(page, null);
-    await assertState('a privacy level is explicitly selected', async () => {
-      return (await page.locator('#tiktok-privacy').inputValue()) !== '';
+    await assertState('final privacy level is Only Me / SELF_ONLY (unaudited Direct Post restriction)', async () => {
+      return (await page.locator('#tiktok-privacy').inputValue()) === 'SELF_ONLY';
     });
     await page.waitForTimeout(DWELL.privacySelected); // reviewer: read the explicit privacy selection
 
@@ -318,6 +322,9 @@ async function main() {
     await assertState('Branded Content Policy referenced in consent text', async () => {
       return await page.locator('#tiktok-consent-text a', { hasText: /branded content policy/i }).isVisible().catch(() => false);
     });
+    await assertState('Music Usage Confirmation still referenced alongside Branded Content Policy', async () => {
+      return await page.locator('#tiktok-consent-text a', { hasText: /music usage/i }).isVisible().catch(() => false);
+    });
     await page.waitForTimeout(DWELL.brandedContentLabel); // reviewer: read Paid partnership label + policy link
 
     // Item 9: while Branded Content is selected, Private/Only Me (SELF_ONLY)
@@ -367,19 +374,21 @@ async function main() {
     });
     await page.waitForTimeout(DWELL.disclosureOff);
 
-    // Re-confirm a truthful privacy level is still selected. Selecting
-    // Branded Content earlier can clear a SELF_ONLY choice back to empty
-    // (dashboard.html:1223-1225) — if that happened, explicitly pick the
-    // most restrictive option again now rather than submitting with privacy
-    // unset (Branded Content is already unchecked above, so SELF_ONLY is no
-    // longer disabled — item 7 still applies: never fall back to Public).
-    await assertState('a privacy level is explicitly selected before submission', async () => {
+    // Re-confirm SELF_ONLY is still the selected privacy level before the
+    // real submission. Selecting Branded Content earlier can clear a
+    // SELF_ONLY choice back to empty (dashboard.html:1223-1225) — if that
+    // happened, explicitly re-pick it now (Branded Content is already
+    // unchecked above, so SELF_ONLY is no longer disabled). PM final
+    // decision: the real CreatorPost-side submission must use Only Me,
+    // never Public, since CreatorPost is still an unaudited Direct Post
+    // client.
+    await assertState('final privacy level is Only Me / SELF_ONLY before submission', async () => {
       let value = await page.locator('#tiktok-privacy').inputValue();
-      if (!value) {
+      if (value !== 'SELF_ONLY') {
         await pickMostRestrictivePrivacy(page, null);
         value = await page.locator('#tiktok-privacy').inputValue();
       }
-      return value !== '';
+      return value === 'SELF_ONLY';
     });
 
     // Item 12: attempt Publish BEFORE checking the explicit per-post
