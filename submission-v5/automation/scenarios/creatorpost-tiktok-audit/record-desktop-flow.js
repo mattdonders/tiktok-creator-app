@@ -153,6 +153,16 @@ async function main() {
       return fname.includes(path.basename(cfg.AUDIT_VIDEO_PATH));
     });
 
+    // Brief video preview playback — do this now, right after upload, while
+    // we're still at the top of the page. The TikTok panel below (account
+    // select through disclosure demo) is a one-way scroll down from here;
+    // playing the preview first means we never have to scroll back up past
+    // the toggles to get to it.
+    await page.locator('#video-preview').scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.getElementById('video-preview')?.play().catch(() => {}));
+    await page.waitForTimeout(DWELL.preview);
+    await page.evaluate(() => document.getElementById('video-preview')?.pause());
+
     // 6. Enter the final audit caption
     await page.fill('#caption', cfg.AUDIT_CAPTION);
 
@@ -248,12 +258,6 @@ async function main() {
       return await page.locator('#tiktok-consent-text a', { hasText: /music usage/i }).isVisible().catch(() => false);
     });
     await page.waitForTimeout(DWELL.musicConsent); // reviewer: read the Music Usage Confirmation link
-
-    // Brief video preview playback
-    await page.locator('#video-preview').scrollIntoViewIfNeeded();
-    await page.evaluate(() => document.getElementById('video-preview')?.play().catch(() => {}));
-    await page.waitForTimeout(DWELL.preview);
-    await page.evaluate(() => document.getElementById('video-preview')?.pause());
 
     // Item 5 (cont.): turn disclosure ON, reveal Your Brand / Branded
     // Content choices.
