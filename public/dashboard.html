@@ -681,6 +681,7 @@
                 <option value="" disabled selected>— select privacy level —</option>
               </select>
               <div id="tiktok-duration-hint" style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem"></div>
+              <div id="tiktok-privacy-restriction-note" style="display:none;font-size:0.72rem;color:#f87171;margin-top:0.4rem;line-height:1.4">Private (Only Me) isn't available for branded content — TikTok requires paid partnerships to stay visible to at least your followers.</div>
             </div>
 
             <!-- All 4 toggles in one unified group -->
@@ -1203,7 +1204,11 @@
       document.getElementById('disclosure-opts').style.display = el.checked ? 'flex' : 'none';
       document.getElementById('disclosure-label').style.display = 'none';
       document.getElementById('disclosure-validation').style.display = disclosureNeedsBrandChoice() ? 'block' : 'none';
-      if (!el.checked) updateConsentText(false);
+      if (!el.checked) {
+        updateConsentText(false);
+        const restrictionNote = document.getElementById('tiktok-privacy-restriction-note');
+        if (restrictionNote) restrictionNote.style.display = 'none';
+      }
       updateSubmitBtn();
     }
 
@@ -1212,12 +1217,20 @@
       const brandContent = document.getElementById('tiktok-brand-content').checked;
       const labelEl = document.getElementById('disclosure-label');
 
-      // Show label feedback per TikTok guidelines
+      // Show label feedback per TikTok guidelines. Both boxes can be checked
+      // at once (self-promotion AND a paid partnership in the same post) —
+      // that combined state gets its own label, not just the Branded
+      // Content one, per TikTok's Commercial Content Disclosure spec.
       if (brandOrganic || brandContent) {
         document.getElementById('disclosure-validation').style.display = 'none';
-        const labelText = brandContent
-          ? "Your photo/video will be labeled as 'Paid partnership'"
-          : "Your photo/video will be labeled as 'Promotional content'";
+        let labelText;
+        if (brandOrganic && brandContent) {
+          labelText = "Your photo/video will be labeled as 'Promotional content and paid partnership'";
+        } else if (brandContent) {
+          labelText = "Your photo/video will be labeled as 'Paid partnership'";
+        } else {
+          labelText = "Your photo/video will be labeled as 'Promotional content'";
+        }
         labelEl.textContent = labelText;
         labelEl.style.display = 'block';
       } else {
@@ -1225,14 +1238,20 @@
         document.getElementById('disclosure-validation').style.display = disclosureNeedsBrandChoice() ? 'block' : 'none';
       }
 
-      // Dynamic consent text
+      // Dynamic consent text (branded content policy applies whenever
+      // Branded Content is checked, whether or not Your Brand is also checked)
       updateConsentText(brandContent);
 
-      // Branded content can't be SELF_ONLY — disable that option
+      // Branded content can't be SELF_ONLY — disable that option AND show a
+      // visible, user-facing explanation next to the privacy field (the
+      // disabled <option> alone isn't enough — a reviewer/creator needs to
+      // see WHY "Only Me" is unavailable, not just find it missing).
       const privacyEl = document.getElementById('tiktok-privacy');
       const selfOnlyOpt = privacyEl.querySelector('option[value="SELF_ONLY"]');
+      const restrictionNote = document.getElementById('tiktok-privacy-restriction-note');
       if (selfOnlyOpt) {
         selfOnlyOpt.disabled = brandContent;
+        if (restrictionNote) restrictionNote.style.display = brandContent ? 'block' : 'none';
         if (brandContent && privacyEl.value === 'SELF_ONLY') {
           privacyEl.value = '';
           showStatus('Branded content visibility cannot be set to private. Please select a different privacy level.', 'error');
@@ -1259,7 +1278,14 @@
         const acc = accounts.find(a => a.id === id);
         return (acc?.platform ?? 'tiktok') === 'tiktok';
       });
-      btn.disabled    = (n === 0) || tikTokCreatorInfoFailed || (tiktokChecked && disclosureNeedsBrandChoice());
+      const needsBrandChoice = tiktokChecked && disclosureNeedsBrandChoice();
+      btn.disabled    = (n === 0) || tikTokCreatorInfoFailed || needsBrandChoice;
+      // Hover explanation on the disabled button itself, in addition to the
+      // inline guidance text under the disclosure options — a native title
+      // attribute still works on a disabled element.
+      btn.title = needsBrandChoice
+        ? "Select “Your brand” and/or “Branded content” above to indicate what this post promotes before publishing."
+        : '';
       if (n >= 2) {
         btn.textContent = scheduled ? `Schedule to ${n} accounts` : `Publish to ${n} accounts`;
       } else {

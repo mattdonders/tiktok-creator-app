@@ -37,6 +37,7 @@ const DWELL = {
   identity: 4000,
   syncResult: 6000,
   panelOpen: 3000,
+  privacyBlankState: 3500,
   privacyOptions: 2500,
   interactionToggles: 4000,
   disclosure: 3000,
@@ -184,6 +185,7 @@ async function main() {
     await assertState('no privacy level preselected', async () => {
       return (await page.locator('#tiktok-privacy').inputValue()) === '';
     });
+    await page.waitForTimeout(DWELL.privacyBlankState); // reviewer: dwell on the initial blank privacy state before it's touched
     await assertState('privacy options loaded live from creator_info', async () => {
       const count = await page.locator('#tiktok-privacy option').count();
       return count > 0;
@@ -272,6 +274,10 @@ async function main() {
       const visible  = await page.locator('#disclosure-validation').isVisible().catch(() => false);
       return disabled && visible;
     });
+    await assertState('disabled Publish button carries an explanatory hover title', async () => {
+      const title = await page.locator('#submit-btn').getAttribute('title');
+      return !!title && title.length > 0;
+    });
     await page.waitForTimeout(DWELL.disclosureValidationError); // reviewer: read the blocking guidance
 
     // Item 7: select Your Brand, show Promotional content labeling, and
@@ -300,13 +306,38 @@ async function main() {
     await page.waitForTimeout(DWELL.brandedContentLabel); // reviewer: read Paid partnership label + policy link
 
     // Item 9: while Branded Content is selected, Private/Only Me (SELF_ONLY)
-    // is cleared and disabled (dashboard.html:1218-1225).
+    // is cleared and disabled (dashboard.html:1218-1225) — AND a visible,
+    // user-facing explanation is shown next to the privacy field, not just
+    // the disabled <option> itself (a disabled option alone doesn't explain
+    // WHY it disappeared).
     await assertState('Only Me privacy option disabled while Branded Content selected', async () => {
       const opt = page.locator('#tiktok-privacy option[value="SELF_ONLY"]');
       if (await opt.count() === 0) return true; // account's privacy_level_options doesn't even offer SELF_ONLY
       return await opt.isDisabled();
     });
-    await page.waitForTimeout(DWELL.brandedPrivacyRestriction); // reviewer: see Only Me disabled
+    await assertState('visible explanation shown for the Only Me restriction', async () => {
+      const opt = page.locator('#tiktok-privacy option[value="SELF_ONLY"]');
+      if (await opt.count() === 0) return true; // nothing to explain if this account never offers SELF_ONLY
+      return await page.locator('#tiktok-privacy-restriction-note').isVisible().catch(() => false);
+    });
+    await page.waitForTimeout(DWELL.brandedPrivacyRestriction); // reviewer: see Only Me disabled + the visible explanation
+
+    // Item 9 (cont.): "Your brand" and "Branded content" are independent
+    // checkboxes and can both be checked at once (self-promotion AND a paid
+    // partnership in the same post) — confirm that combined state gets its
+    // own label plus the combined policy declaration, not just the Branded
+    // Content-only text.
+    await page.locator('#tiktok-brand-organic').check();
+    await assertState('both-selected state labeled as combined disclosure', async () => {
+      const text = await page.locator('#disclosure-label').innerText().catch(() => '');
+      return /promotional content and paid partnership/i.test(text);
+    });
+    await assertState('combined policy declaration shown (Branded Content Policy + Music Usage Confirmation)', async () => {
+      const text = await page.locator('#tiktok-consent-text').innerText().catch(() => '');
+      return /branded content policy/i.test(text) && /music usage/i.test(text);
+    });
+    await page.waitForTimeout(DWELL.brandedContentLabel); // reviewer: read the combined label + combined policy declaration
+    await page.locator('#tiktok-brand-organic').uncheck();
 
     // Item 11: the audit content is genuinely non-commercial — return
     // disclosure OFF before the actual submission. Uncheck Branded Content
