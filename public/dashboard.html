@@ -1188,11 +1188,23 @@
       updatePlatformPanels();
     }
 
+    // Disclosure ON + no brand choice must block Publish proactively (button
+    // disabled with guidance visible), not just reject the click after the
+    // fact — this mirrors TikTok's Commercial Content Disclosure UX spec.
+    function disclosureNeedsBrandChoice() {
+      const disclosureOn = document.getElementById('tiktok-disclosure-toggle')?.checked ?? false;
+      if (!disclosureOn) return false;
+      const brandOrganic = document.getElementById('tiktok-brand-organic')?.checked ?? false;
+      const brandContent = document.getElementById('tiktok-brand-content')?.checked ?? false;
+      return !brandOrganic && !brandContent;
+    }
+
     function onDisclosureToggle(el) {
       document.getElementById('disclosure-opts').style.display = el.checked ? 'flex' : 'none';
-      document.getElementById('disclosure-validation').style.display = 'none';
       document.getElementById('disclosure-label').style.display = 'none';
+      document.getElementById('disclosure-validation').style.display = disclosureNeedsBrandChoice() ? 'block' : 'none';
       if (!el.checked) updateConsentText(false);
+      updateSubmitBtn();
     }
 
     function onDisclosureOptChange() {
@@ -1210,6 +1222,7 @@
         labelEl.style.display = 'block';
       } else {
         labelEl.style.display = 'none';
+        document.getElementById('disclosure-validation').style.display = disclosureNeedsBrandChoice() ? 'block' : 'none';
       }
 
       // Dynamic consent text
@@ -1225,6 +1238,7 @@
           showStatus('Branded content visibility cannot be set to private. Please select a different privacy level.', 'error');
         }
       }
+      updateSubmitBtn();
     }
 
     function updateConsentText(isBrandedContent) {
@@ -1241,7 +1255,11 @@
       const btn       = document.getElementById("submit-btn");
       const n         = getCheckedAccountIds().length;
       const scheduled = document.getElementById("schedule-toggle")?.checked ?? false;
-      btn.disabled    = (n === 0) || tikTokCreatorInfoFailed;
+      const tiktokChecked = getCheckedAccountIds().some(id => {
+        const acc = accounts.find(a => a.id === id);
+        return (acc?.platform ?? 'tiktok') === 'tiktok';
+      });
+      btn.disabled    = (n === 0) || tikTokCreatorInfoFailed || (tiktokChecked && disclosureNeedsBrandChoice());
       if (n >= 2) {
         btn.textContent = scheduled ? `Schedule to ${n} accounts` : `Publish to ${n} accounts`;
       } else {

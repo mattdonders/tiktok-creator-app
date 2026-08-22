@@ -1,0 +1,18 @@
+{
+  "name": "creatorpost-audit-automation",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Audit-production infrastructure only — not part of the CreatorPost product. Deterministic Playwright driver for the fresh desktop capture (post-OAuth flow) used in the TikTok Direct Post resubmission demo.",
+  "scripts": {
+    "login:creatorpost": "node scenarios/creatorpost-tiktok-audit/login-creatorpost.js",
+    "login:tiktok": "node scenarios/creatorpost-tiktok-audit/login-tiktok.js",
+    "probe:tiktok-cookies": "node scenarios/creatorpost-tiktok-audit/probe-tiktok-cookies.js",
+    "seed:tiktok-cookies": "node scenarios/creatorpost-tiktok-audit/seed-tiktok-cookies.js",
+    "verify:tiktok-session": "node scenarios/creatorpost-tiktok-audit/verify-tiktok-session.js",
+    "record": "node scenarios/creatorpost-tiktok-audit/record-desktop-flow.js",
+    "record:dry": "node scenarios/creatorpost-tiktok-audit/record-desktop-flow.js --dry-run"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

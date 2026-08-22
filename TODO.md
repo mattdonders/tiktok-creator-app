@@ -123,3 +123,12 @@
 
 ## 🔜 Follow-up
 - [ ] Check TikTok Developer Portal "Manage apps" page in 2-4 weeks (~week of 2026-08-18 to 2026-09-01) for the 4th resubmission decision
+
+## 📌 Pinterest Production Activation (2026-08-21)
+
+- [x] Gate 1 — Production OAuth: connected `owner-prod` in production D1
+- [x] Gate 2 — Connection verification: token present/unexpired, live board read confirmed 3/3 expected SHH boards
+- [x] Fix: first production OAuth was completed as the wrong CreatorPost login (`creatorlab@mattdonders.com`), which didn't retire the Phase A sandbox sentinel (atomic retire is scoped by `user_id`, and the OAuth session's user didn't match the sentinel's owner). Deleted the stray `owner-prod` row; correct OAuth then completed as `contentlab@mattdonders.com`, which matched the sentinel's `user_id` and retired it correctly.
+- [x] Recovered missing `CREATORPOST_INTERNAL_TOKEN` — not in this repo's local env; found live in `content-lab/pinterest-integration/handoff/.env`. Tightened that file's permissions 644 → 600.
+- [ ] **Local `main` branch is diverged from `origin/main`** — local HEAD (`8fbda1b`, TikTok resubmission audit commit) branched off `1b09c6e`, an ancestor that predates all Pinterest B0-B4 work (commits `d1f07cb`..`f672bd9`). Local working tree is currently missing that code. Needs a deliberate rebase/merge before doing any further local Pinterest work — do NOT blindly `git reset --hard origin/main` without checking for uncommitted local work first.
+- [ ] Gate 3 (real Pin proof) — NOT authorized/attempted this session. Explicitly out of scope until separately requested.

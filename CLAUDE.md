@@ -111,6 +111,21 @@ live in `docs/submission-videos/`, committed to the repo (not gitignored). Inter
 toggles (Comment/Duet/Stitch) must default OFF per TikTok's Content Sharing Guidelines —
 this was a real bug (fixed commit `d76af6a`) behind at least one prior rejection.
 
+## Pinterest production activation (added 2026-08-21)
+
+Pinterest OAuth has two parallel flows in `functions/[[route]].js`: Phase A (`/auth/pinterest`,
+sandbox-only, sentinel row `platform_user_id='phase-a-sandbox-proof'`) and production
+(`/auth/pinterest/production` → `/callback/pinterest`, row `platform_user_id='owner-prod'`).
+On successful production OAuth, the callback atomically upserts `owner-prod` and deletes the
+sandbox sentinel **in the same D1 `batch()`, scoped by `user_id`** — if production OAuth is
+completed under a different CreatorPost login than whichever login did the Phase A sandbox
+proof, the sentinel is silently left behind (mismatched `user_id`, no error). Always confirm
+which CreatorPost account is logged in in the browser before running production OAuth.
+
+`CREATORPOST_INTERNAL_TOKEN` (used to call `/api/internal/pinterest/*`) is not stored in this
+repo's local env — the working copy lives in `content-lab/pinterest-integration/handoff/.env`,
+the consumer/pipeline repo for Start Here Home Pinterest publishing.
+
 ## Notes
 
 - The OAuth flow is only needed once per TikTok account to get the initial token.
