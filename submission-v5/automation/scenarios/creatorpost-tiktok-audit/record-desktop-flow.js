@@ -281,6 +281,20 @@ async function main() {
     // from this position.
     await page.locator('#submit-btn').scrollIntoViewIfNeeded();
 
+    // Item 2 (PM correction, replaces the old "SELF_ONLY option disabled
+    // while Branded Content selected" pattern): privacy is still Only Me at
+    // this point (selected earlier), so the compliant single behavior is to
+    // disable the "Branded content" checkbox itself with a visible
+    // explanation — the incompatible combination is never entered, so there
+    // is no accept-then-reject error path.
+    await assertState('Branded content checkbox disabled while privacy is Only Me', async () => {
+      return await page.locator('#tiktok-brand-content').isDisabled();
+    });
+    await assertState('visible explanation shown for the Branded content restriction', async () => {
+      return await page.locator('#tiktok-privacy-restriction-note').isVisible().catch(() => false);
+    });
+    await page.waitForTimeout(DWELL.brandedPrivacyRestriction); // reviewer: see Branded content disabled + the visible explanation
+
     // Item 6: with disclosure ON and neither choice selected, Publish is
     // proactively DISABLED (dashboard.html updateSubmitBtn()/
     // disclosureNeedsBrandChoice()) with explanatory guidance visible —
@@ -311,8 +325,20 @@ async function main() {
     await page.waitForTimeout(DWELL.brandLabel); // reviewer: read the Promotional content label
 
     // Item 8: switch to Branded Content, show Paid partnership labeling and
-    // reference to the Branded Content Policy.
+    // reference to the Branded Content Policy. Branded Content requires a
+    // non-private privacy level (Item 2 above), so temporarily move off
+    // Only Me to demonstrate it — the truthful Only Me choice is restored
+    // before the real submission (Item 11/re-confirm below).
     await page.locator('#tiktok-brand-organic').uncheck();
+    await pickMostRestrictivePrivacy(page, 'SELF_ONLY');
+    await assertState('privacy temporarily switched off Only Me to demo Branded Content', async () => {
+      const value = await page.locator('#tiktok-privacy').inputValue();
+      return value !== '' && value !== 'SELF_ONLY';
+    });
+    await assertState('Branded content checkbox enabled once privacy is not Only Me', async () => {
+      return !(await page.locator('#tiktok-brand-content').isDisabled());
+    });
+    await page.waitForTimeout(DWELL.privacySelected); // reviewer: read the temporary privacy switch
     await page.locator('#tiktok-brand-content').check();
     await page.locator('#submit-btn').scrollIntoViewIfNeeded(); // keep it in frame after the checkbox interactions above
     await assertState('"Branded content" labeled as Paid partnership', async () => {
@@ -326,23 +352,6 @@ async function main() {
       return await page.locator('#tiktok-consent-text a', { hasText: /music usage/i }).isVisible().catch(() => false);
     });
     await page.waitForTimeout(DWELL.brandedContentLabel); // reviewer: read Paid partnership label + policy link
-
-    // Item 9: while Branded Content is selected, Private/Only Me (SELF_ONLY)
-    // is cleared and disabled (dashboard.html:1218-1225) — AND a visible,
-    // user-facing explanation is shown next to the privacy field, not just
-    // the disabled <option> itself (a disabled option alone doesn't explain
-    // WHY it disappeared).
-    await assertState('Only Me privacy option disabled while Branded Content selected', async () => {
-      const opt = page.locator('#tiktok-privacy option[value="SELF_ONLY"]');
-      if (await opt.count() === 0) return true; // account's privacy_level_options doesn't even offer SELF_ONLY
-      return await opt.isDisabled();
-    });
-    await assertState('visible explanation shown for the Only Me restriction', async () => {
-      const opt = page.locator('#tiktok-privacy option[value="SELF_ONLY"]');
-      if (await opt.count() === 0) return true; // nothing to explain if this account never offers SELF_ONLY
-      return await page.locator('#tiktok-privacy-restriction-note').isVisible().catch(() => false);
-    });
-    await page.waitForTimeout(DWELL.brandedPrivacyRestriction); // reviewer: see Only Me disabled + the visible explanation
 
     // Item 9 (cont.): "Your brand" and "Branded content" are independent
     // checkboxes and can both be checked at once (self-promotion AND a paid
@@ -375,13 +384,12 @@ async function main() {
     await page.waitForTimeout(DWELL.disclosureOff);
 
     // Re-confirm SELF_ONLY is still the selected privacy level before the
-    // real submission. Selecting Branded Content earlier can clear a
-    // SELF_ONLY choice back to empty (dashboard.html:1223-1225) — if that
-    // happened, explicitly re-pick it now (Branded Content is already
-    // unchecked above, so SELF_ONLY is no longer disabled). PM final
-    // decision: the real CreatorPost-side submission must use Only Me,
-    // never Public, since CreatorPost is still an unaudited Direct Post
-    // client.
+    // real submission. Privacy was temporarily switched off Only Me above to
+    // demo Branded Content (Item 8) — explicitly re-pick SELF_ONLY now
+    // (Branded Content is already unchecked, so the checkbox restriction no
+    // longer applies). PM final decision: the real CreatorPost-side
+    // submission must use Only Me, never Public, since CreatorPost is still
+    // an unaudited Direct Post client.
     await assertState('final privacy level is Only Me / SELF_ONLY before submission', async () => {
       let value = await page.locator('#tiktok-privacy').inputValue();
       if (value !== 'SELF_ONLY') {

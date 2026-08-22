@@ -677,11 +677,11 @@
             <!-- Privacy -->
             <div class="form-group">
               <label>Privacy <span style="color:#f87171;font-weight:400;text-transform:none;letter-spacing:normal">*</span></label>
-              <select class="input" id="tiktok-privacy">
+              <select class="input" id="tiktok-privacy" onchange="onPrivacyChange()">
                 <option value="" disabled selected>— select privacy level —</option>
               </select>
               <div id="tiktok-duration-hint" style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem"></div>
-              <div id="tiktok-privacy-restriction-note" style="display:none;font-size:0.72rem;color:#f87171;margin-top:0.4rem;line-height:1.4">Private (Only Me) isn't available for branded content — TikTok requires paid partnerships to stay visible to at least your followers.</div>
+              <div id="tiktok-privacy-restriction-note" style="display:none;font-size:0.72rem;color:#f87171;margin-top:0.4rem;line-height:1.4">Branded content can't be marked while Privacy is Only Me — TikTok requires paid partnerships to stay visible to at least your followers. Choose a different privacy level to disclose branded content.</div>
             </div>
 
             <!-- All 4 toggles in one unified group -->
@@ -1159,6 +1159,33 @@
       hintEl.textContent = info.max_video_post_duration_sec
         ? `Max video length: ${info.max_video_post_duration_sec}s`
         : '';
+
+      updateBrandedContentAvailability();
+    }
+
+    // Branded content can't be posted as SELF_ONLY (TikTok requires paid
+    // partnerships to stay visible to at least followers) — gate this on the
+    // privacy field itself: disable the "Branded content" checkbox while
+    // privacy is Only Me, with a visible explanation, so the incompatible
+    // combination can never be entered in the first place. This is the only
+    // place that reconciles privacy vs. branded content — no separate
+    // accept-then-reject path.
+    function onPrivacyChange() {
+      updateBrandedContentAvailability();
+    }
+
+    function updateBrandedContentAvailability() {
+      const privacyEl      = document.getElementById('tiktok-privacy');
+      const brandContentEl = document.getElementById('tiktok-brand-content');
+      const restrictionNote = document.getElementById('tiktok-privacy-restriction-note');
+      if (!privacyEl || !brandContentEl) return;
+      const isSelfOnly = privacyEl.value === 'SELF_ONLY';
+      brandContentEl.disabled = isSelfOnly;
+      if (restrictionNote) restrictionNote.style.display = isSelfOnly ? 'block' : 'none';
+      if (isSelfOnly && brandContentEl.checked) {
+        brandContentEl.checked = false;
+        onDisclosureOptChange();
+      }
     }
 
     // creator_info is unusable → show a visible error and block the TikTok posting UI.
@@ -1241,22 +1268,6 @@
       // Dynamic consent text (branded content policy applies whenever
       // Branded Content is checked, whether or not Your Brand is also checked)
       updateConsentText(brandContent);
-
-      // Branded content can't be SELF_ONLY — disable that option AND show a
-      // visible, user-facing explanation next to the privacy field (the
-      // disabled <option> alone isn't enough — a reviewer/creator needs to
-      // see WHY "Only Me" is unavailable, not just find it missing).
-      const privacyEl = document.getElementById('tiktok-privacy');
-      const selfOnlyOpt = privacyEl.querySelector('option[value="SELF_ONLY"]');
-      const restrictionNote = document.getElementById('tiktok-privacy-restriction-note');
-      if (selfOnlyOpt) {
-        selfOnlyOpt.disabled = brandContent;
-        if (restrictionNote) restrictionNote.style.display = brandContent ? 'block' : 'none';
-        if (brandContent && privacyEl.value === 'SELF_ONLY') {
-          privacyEl.value = '';
-          showStatus('Branded content visibility cannot be set to private. Please select a different privacy level.', 'error');
-        }
-      }
       updateSubmitBtn();
     }
 
@@ -1863,6 +1874,8 @@
       document.getElementById('disclosure-opts').style.display = 'none';
       document.getElementById('tiktok-brand-organic').checked = false;
       document.getElementById('tiktok-brand-content').checked = false;
+      document.getElementById('tiktok-brand-content').disabled = false;
+      document.getElementById('tiktok-privacy-restriction-note').style.display = 'none';
       document.getElementById('disclosure-label').style.display = 'none';
       document.getElementById('tiktok-post-confirm').checked = false;
       document.getElementById('tiktok-creator-identity').style.display = 'none';
