@@ -22,6 +22,7 @@ import { executeApprovedJob } from '../lib/pinterest-publish.js';
 import { PINTEREST_BOARD_ALIASES } from '../lib/pinterest-boards.js';
 import { ingestManifest, listJobs, cancelJob } from '../lib/pinterest-manifest.js';
 import { loadPinterestConnectionStatus } from '../lib/pinterest-connection.js';
+import { loadBoardPinAnalytics } from '../lib/pinterest-analytics.js';
 import { refreshExpiredPinterestTokens } from '../lib/pinterest-token.js';
 import { runPublishDue } from '../lib/pinterest-scheduler.js';
 
@@ -973,6 +974,20 @@ app.get('/api/internal/pinterest/connection', async (c) => {
   if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
   const status = await loadPinterestConnectionStatus(c.env.DB, now());
   return c.json(status);
+});
+
+// (b3) Read-only Pin identity + organic summary metrics for one owned board alias.
+// Campaign snapshots are returned to the owner and are never written to CreatorPost.
+app.get('/api/internal/pinterest/analytics/pins', async (c) => {
+  if (!(await hasInternalToken(c)) && !(await ownerSession(c))) return c.json({ ok: false, error: 'unauthorized' }, 401);
+  const boardAlias = c.req.query('board_alias') ?? '';
+  const result = await loadBoardPinAnalytics({
+    DB: c.env.DB,
+    fetchImpl: fetch,
+    aliasMap: PINTEREST_BOARD_ALIASES,
+    nowSec: now(),
+  }, boardAlias);
+  return c.json(result, result.status);
 });
 
 // (c) Cancel ONE unclaimed approved job (internal token OR owner session).
