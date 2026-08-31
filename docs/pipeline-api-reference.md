@@ -33,6 +33,72 @@ Use the `id` field as `account_id` in all other endpoints. Do not rely on `displ
 
 ---
 
+### `GET /api/v1/accounts/{account_id}/tiktok/analytics`
+
+Account-scoped, read-only TikTok analytics. The authenticated API-key owner must own the requested
+TikTok account. CreatorPost uses the stored access token internally but never returns it. This route
+does not call Sync Posts, read CreatorPost post rows, or write D1 data.
+
+**Query parameters:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `max_count` | integer | no | TikTok page size, 1–20; default 20 |
+| `cursor` | integer | no | `next_cursor` returned by the prior page |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "observed_at": "2026-09-03T17:00:00.000Z",
+  "account": {
+    "account_id": "uuid",
+    "platform": "tiktok",
+    "username": "quietluxemeals",
+    "followers": 50,
+    "following": 0,
+    "likes": 1054,
+    "video_count": 57
+  },
+  "page": {
+    "requested_cursor": null,
+    "returned_count": 20,
+    "has_more": true,
+    "next_cursor": 1788123456,
+    "max_count": 20
+  },
+  "videos": [
+    {
+      "video_id": "7617528876855528734",
+      "published_at": "2026-09-02T17:01:00.000Z",
+      "description": "Post caption",
+      "views": 1000,
+      "likes": 20,
+      "comments": 1,
+      "shares": 2,
+      "duration_seconds": 0,
+      "is_aigc": false
+    }
+  ],
+  "unavailable_fields": [
+    "saves", "per_post_follows", "profile_views",
+    "average_watch_time", "completion_rate", "traffic_source"
+  ]
+}
+```
+
+**Notes:**
+
+- Metric values preserve explicit zero; missing upstream fields are returned as `null`.
+- Continue pagination only while `has_more` is true and `next_cursor` is non-null.
+- Token expiry returns `409 {"error":"tiktok_reconnect_required"}`. This endpoint never refreshes
+  or reconnects the account itself.
+- This is the preferred analytics path for externally scheduled QLM posts because it lists the live
+  TikTok account directly and does not depend on CreatorPost post reconciliation.
+
+---
+
 ### `POST /api/v1/publish`
 
 Upload and publish a video to TikTok.

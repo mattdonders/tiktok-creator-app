@@ -25,6 +25,8 @@ import { loadPinterestConnectionStatus } from '../lib/pinterest-connection.js';
 import { loadBoardPinAnalytics } from '../lib/pinterest-analytics.js';
 import { refreshExpiredPinterestTokens } from '../lib/pinterest-token.js';
 import { runPublishDue } from '../lib/pinterest-scheduler.js';
+import { loadTikTokAccountAnalytics } from '../lib/tiktok-analytics.js';
+import { refreshExpiredTikTokTokens } from '../lib/tiktok-token.js';
 
 const app = new Hono();
 
@@ -231,7 +233,7 @@ async function tiktokInitFetch(url, token, body, ctx = null) {
   return { data, rl };
 }
 
-async function getApiKeySession(c) {
+async function getApiKeySession(c, { touch = true } = {}) {
   const auth = c.req.header('Authorization') ?? '';
   if (!auth.startsWith('Bearer cp_')) return null;
   const keyHash = await hashKey(auth.slice(7));
@@ -239,9 +241,11 @@ async function getApiKeySession(c) {
     'SELECT id, user_id FROM api_keys WHERE key_hash = ?'
   ).bind(keyHash).first();
   if (!row) return null;
-  c.executionCtx.waitUntil(
-    c.env.DB.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').bind(now(), row.id).run()
-  );
+  if (touch) {
+    c.executionCtx.waitUntil(
+      c.env.DB.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').bind(now(), row.id).run()
+    );
+  }
   c.set('log_user_id', row.user_id);
   return { user_id: row.user_id };
 }
@@ -2118,22 +2122,6 @@ async function exchangeTikTokCode(code, redirectUri, env) {
   return res.json();
 }
 
-async function refreshTikTokToken(refreshToken, env) {
-  const body = new URLSearchParams({
-    client_key:    env.TIKTOK_CLIENT_ID,
-    client_secret: env.TIKTOK_CLIENT_SECRET,
-    grant_type:    'refresh_token',
-    refresh_token: refreshToken,
-  });
-  const res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-  if (!res.ok) throw new Error(`TikTok refresh error: ${await res.text()}`);
-  return res.json();
-}
-
 async function fetchTikTokProfile(accessToken) {
   const res  = await fetch(
     'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,username',
@@ -2471,6 +2459,25 @@ app.get('/api/v1/accounts', async (c) => {
   ).bind(session.user_id).all();
 
   return c.json(results);
+});
+
+// Account-scoped TikTok analytics. This route deliberately uses read-only API-key
+// authentication (no last_used_at touch), performs no D1 write, and never returns
+// the account token. It is independent of /api/v1/stats and Sync Posts.
+app.get('/api/v1/accounts/:account_id/tiktok/analytics', async (c) => {
+  const session = await getApiKeySession(c, { touch: false });
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+
+  const result = await loadTikTokAccountAnalytics(
+    { DB: c.env.DB, nowSec: now() },
+    session.user_id,
+    c.req.param('account_id'),
+    {
+      cursor: c.req.query('cursor'),
+      maxCount: c.req.query('max_count'),
+    },
+  );
+  return c.json(result, result.status);
 });
 
 app.post('/api/v1/backfill-publish-times', async (c) => {
@@ -3155,34 +3162,6 @@ async function refreshExpiredInstagramTokens(env) {
   return refreshed;
 }
 
-async function refreshExpiredTikTokTokens(env) {
-  const threshold = now() + 86400; // accounts expiring within 24 hours
-  const { results } = await env.DB.prepare(
-    `SELECT id, refresh_token FROM connected_accounts
-     WHERE platform = 'tiktok' AND refresh_token IS NOT NULL
-       AND token_expires_at IS NOT NULL AND token_expires_at < ?`
-  ).bind(threshold).all();
-
-  let refreshed = 0;
-  for (const account of results) {
-    try {
-      const data = await refreshTikTokToken(account.refresh_token, env);
-      await env.DB.prepare(
-        'UPDATE connected_accounts SET access_token = ?, refresh_token = ?, token_expires_at = ? WHERE id = ?'
-      ).bind(
-        data.access_token,
-        data.refresh_token ?? account.refresh_token,
-        data.expires_in ? now() + data.expires_in : null,
-        account.id
-      ).run();
-      refreshed++;
-    } catch (err) {
-      console.error(`TikTok token refresh failed for ${account.id}:`, err.message);
-    }
-  }
-  return refreshed;
-}
-
 // ── Cron endpoint (called by external cron, e.g. cron-job.org every 6h) ──────
 // POST /api/cron/refresh-tokens
 // Header: Authorization: Bearer <CRON_SECRET>
@@ -3197,7 +3176,7 @@ app.post('/api/cron/refresh-tokens', async (c) => {
   // publish-time safety check (lib/pinterest-token.js). Added alongside the incumbent
   // TikTok/Instagram refreshers WITHOUT changing their behavior. Never throws.
   const [tiktok, instagram, pinterest] = await Promise.all([
-    refreshExpiredTikTokTokens(c.env),
+    refreshExpiredTikTokTokens({ DB: c.env.DB, env: c.env, nowSec: now() }),
     refreshExpiredInstagramTokens(c.env),
     refreshExpiredPinterestTokens({ DB: c.env.DB, env: c.env, nowSec: now() })
       .catch(() => ({ refreshed: 0, status: 'error' })),
