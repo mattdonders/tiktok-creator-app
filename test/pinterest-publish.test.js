@@ -25,6 +25,7 @@ import {
   PINTEREST_JOB_STATES,
 } from '../lib/pinterest-publish.js';
 import {
+  PINTEREST_BOARD_ALIASES,
   resolveBoardMatch,
   BOARD_UNKNOWN_ALIAS,
   BOARD_UNRESOLVED_ZERO,
@@ -32,6 +33,14 @@ import {
 } from '../lib/pinterest-boards.js';
 
 const ALIASES = { 'home-maintenance': 'Home Maintenance Troubleshooting' };
+
+test('production alias maps Beginner Food Gardening to the exact owner-created board name', () => {
+  assert.equal(PINTEREST_BOARD_ALIASES['beginner-food-gardening'], 'Beginner Food Gardening');
+  assert.deepEqual(
+    resolveBoardMatch('beginner-food-gardening', [{ id: 'garden-1', name: 'Beginner Food Gardening' }]),
+    { ok: true, boardId: 'garden-1' },
+  );
+});
 
 // ─── In-memory fake D1 (models the exact statements the engine issues) ───────
 
