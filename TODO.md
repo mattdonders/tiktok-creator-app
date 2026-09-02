@@ -32,6 +32,7 @@
 - [ ] Collect feedback (Tally form or direct DM)
 - [ ] Fix top 2-3 reported issues
 - [ ] If TikTok Direct Post approved → update landing page, remove inbox caveats
+  - Also make the `/api/publish` Inbox fallback fail loud (see "Known: silent Inbox fallback" below). Once Direct Post is approved, a silent downgrade to Inbox is a correctness bug, not a safety net — and the persisted-data answer can then drop its Inbox reference.
 - [ ] Start Product Hunt prep (screenshots, tagline, hunter outreach)
 
 ---
@@ -122,7 +123,36 @@
 - [x] Record 3-clip TikTok Direct Post demo video (OAuth, post-to-TikTok flow, post-trigger validation) and submit 4th Content Posting API application (submitted 2026-08-04, awaiting response 2-4 weeks) — clips + notes in `docs/submission-videos/`
 
 ## 🔜 Follow-up
-- [ ] Check TikTok Developer Portal "Manage apps" page in 2-4 weeks (~week of 2026-08-18 to 2026-09-01) for the 4th resubmission decision
+- [ ] Check TikTok Developer Portal "Manage apps" page for the **v10 resubmission** decision (submitted 2026-09-02 with `v10-final-cut.mp4` + Direct Post wording in two answers; expect a reply ~week of 2026-09-16 to 2026-09-30). Exact submitted answers: `docs/tiktok-content-posting-api-application-2026-08-22.md`
+- [x] v6 resubmission (2026-08-22, ref `20260823012426`) — REJECTED for demonstrating Upload/Inbox rather than Direct Post. Superseded by v10.
+- [x] Build v6 TikTok Direct Post audit video — full replacement of the old `docs/submission-videos/clip2/clip3` pipeline (predated the disclosure/privacy/branded-content compliance fixes). New cut in `submission-v5/` sources fresh post-fix recordings only (`fresh-oauth-flow.mp4`, `fresh-desktop-flow.mp4`, iOS native-completion recording), composites a 200px black caption band beneath unmodified 1440x900 UI footage (no overlays), and drops the TikTok-web-inbox beat entirely (owner confirmed TikTok inbox/notifications aren't functional on web — that proof lives on iOS instead). Final: `submission-v5/v6-final-cut.mp4`, 145.28s, 1440x1100, 4.3MB. Rebuildable via `submission-v5/build-v6-cut.sh`. Owner marked PASS 2026-08-22, submitting manually via Developer Portal (not done by Claude, per standing instruction not to submit).
+
+## 📎 Known: silent Inbox fallback in `/api/publish` (note, not a task)
+
+Recorded so it isn't rediscovered from scratch. **No work item is open for this** —
+it is deliberately parked until the TikTok decision arrives.
+
+`app.post('/api/publish')` in `functions/[[route]].js` (~line 1658) catches a failed
+Direct Post `video/init` and silently retries against `TIKTOK_INBOX_INIT_URL`. The
+user sees a success; the video lands in the TikTok Inbox as a draft instead of on
+their profile.
+
+Why it matters, in one line: **this is what got the 2026-08-22 application rejected.**
+The v6 capture recorded the fallback firing, so the video demonstrated Upload where the
+application was asking for Direct Post. v10 avoids it with a fail-loud capture gate
+(aborts on `/draft|uploaded to/i`) — the capture is honest, the product is unchanged.
+
+Consequences to keep straight:
+- The persisted-data answer's Inbox reference is literally true *only because* this
+  fallback exists. Fix the code first, then the answer — not the other way round.
+- While it exists, "CreatorPost did a Direct Post" is not something the UI can be
+  trusted to tell you. Confirm against TikTok Studio.
+- It is a textbook silent default, which is a house-rule violation everywhere else.
+
+Trigger to act: TikTok approves Direct Post (→ see the Week 4 item), or any report of a
+post "succeeding" but not appearing on profile. Absent either, leave it alone — a
+fail-loud change here turns a degraded post into a hard error, which is the right
+behaviour only once Direct Post is actually approved.
 
 ## 📌 Pinterest Production Activation (2026-08-21)
 
@@ -130,5 +160,5 @@
 - [x] Gate 2 — Connection verification: token present/unexpired, live board read confirmed 3/3 expected SHH boards
 - [x] Fix: first production OAuth was completed as the wrong CreatorPost login (`creatorlab@mattdonders.com`), which didn't retire the Phase A sandbox sentinel (atomic retire is scoped by `user_id`, and the OAuth session's user didn't match the sentinel's owner). Deleted the stray `owner-prod` row; correct OAuth then completed as `contentlab@mattdonders.com`, which matched the sentinel's `user_id` and retired it correctly.
 - [x] Recovered missing `CREATORPOST_INTERNAL_TOKEN` — not in this repo's local env; found live in `content-lab/pinterest-integration/handoff/.env`. Tightened that file's permissions 644 → 600.
-- [ ] **Local `main` branch is diverged from `origin/main`** — local HEAD (`8fbda1b`, TikTok resubmission audit commit) branched off `1b09c6e`, an ancestor that predates all Pinterest B0-B4 work (commits `d1f07cb`..`f672bd9`). Local working tree is currently missing that code. Needs a deliberate rebase/merge before doing any further local Pinterest work — do NOT blindly `git reset --hard origin/main` without checking for uncommitted local work first.
+- [x] **Local `main` divergence from `origin/main`** — ✅ RESOLVED, verified 2026-09-02 at `988253a`: `main` is level with `origin/main` (0 ahead / 0 behind) and contains both the TikTok audit commit `8fbda1b` and the full Pinterest B0-B4 range through `f672bd9`. No rebase needed; local working tree is no longer missing Pinterest code.
 - [ ] Gate 3 (real Pin proof) — NOT authorized/attempted this session. Explicitly out of scope until separately requested.
