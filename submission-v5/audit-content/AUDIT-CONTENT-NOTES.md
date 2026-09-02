@@ -57,3 +57,32 @@ material, no music, no AI-generated people, no CreatorPost logo, no
 
 ## Verification stills (neutral variant)
 `stills-neutral/frame-first.png`, `frame-mid.png`, `frame-last.png` — extracted at 0s/4s/~8s. Confirmed correct resolution/codec, zero audio streams (`ffprobe` stream count = 0 audio), zero CreatorPost branding.
+
+---
+
+## Superseded 2026-09-02 — replaced by neutral variant v3 (Direct Post resubmission)
+
+`creatorpost-audit-test-clip-neutral.mp4` (v2) is the clip posted in the
+previous, rejected audit video. For the Sept 2026 Direct Post resubmission the
+posted content is deliberately a **different-looking clip**, so a reviewer
+comparing the two videos can tell at a glance that this is a new post and not
+re-used footage. v2 is kept for reference/rollback.
+
+## Current asset: `creatorpost-audit-test-clip-neutral-v3.mp4`
+
+Generated via `render-neutral-v3.sh`. Same compliance envelope as v2 —
+ffmpeg's own synthetic source, no CreatorPost logo, no `creatorpost.app` text,
+no watermark, no promotional claim, no third-party/copyright material, no
+music, no audio stream.
+
+- **File**: 1080x1920, H264, 10.00s, 30fps, no audio track, ~75KB, `+faststart`.
+- **How it differs from v2**:
+  | | v2 (previous submission) | v3 (this submission) |
+  |---|---|---|
+  | source | animated `testsrc2`, hue rotating | static `smptehdbars` |
+  | motion | continuous hue shift | white band sweeping top → bottom |
+  | counter | 1 → 8, white on black | 10 → 1, **yellow** on black |
+  | duration | 8s | 10s |
+  | stamp | none | `TEST CLIP 03 - 2026-09` |
+- **Verification stills**: `stills-neutral-v3/frame-first.png`, `frame-mid.png`, `frame-last.png` (0s / 5s / ~10s). `ffprobe` audio stream count = 0.
+- **Wired at**: `automation/scenarios/creatorpost-tiktok-audit/config.js` → `AUDIT_VIDEO_PATH`.

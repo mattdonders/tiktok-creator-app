@@ -19,11 +19,12 @@ const fs = require('fs');
  * @param {{width:number,height:number}} [opts.viewport]
  * @param {string} [opts.recordVideoDir] - if set, Playwright records webm video of the context to this dir
  */
-async function launchProfile({ profileDir, headless = false, viewport = { width: 1440, height: 900 }, recordVideoDir }) {
+async function launchProfile({ profileDir, headless = false, viewport = { width: 1440, height: 900 }, recordVideoDir, channel }) {
   fs.mkdirSync(profileDir, { recursive: true });
   const context = await chromium.launchPersistentContext(profileDir, {
     headless,
     viewport,
+    channel, // e.g. 'chrome' to use the real installed, properly-signed Chrome instead of Playwright's bundled ad-hoc-signed test binary
     recordVideo: recordVideoDir ? { dir: recordVideoDir, size: viewport } : undefined,
   });
   return context;
