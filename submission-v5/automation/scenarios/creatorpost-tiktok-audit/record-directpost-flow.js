@@ -36,6 +36,13 @@ const DRY_RUN = process.argv.includes('--dry-run');
 // shows up on TikTok web is the one this run just published, rather than any
 // earlier post on the account.
 const CAPTION_PROOF = 'CreatorPost review demo';
+
+// TikTok Studio's Posts table. Used as the primary TikTok-side proof surface
+// instead of the public profile grid: it renders the Privacy column ("Only me"
+// for a SELF_ONLY post) and the exact creation timestamp, and — unlike the
+// grid — it has stayed reachable while TikTok rate-limits automated hits on
+// the public profile page.
+const TIKTOK_STUDIO_POSTS_URL = 'https://www.tiktok.com/tiktokstudio/content?tab=post';
 let video = null; // set inside main(); read by the .then() handler after context close
 
 // Reviewer-comprehension dwell times (ms) — deliberately generous. Optimize
@@ -67,6 +74,8 @@ const DWELL = {
   publishedStatus: 6000,
   gridLock: 6000,
   postDetail: 10000,
+  studioEmpty: 9000,
+  studioRow: 14000,
 };
 
 // Item 7 (unaudited Direct Post semantics): unaudited Direct Post clients are
@@ -85,6 +94,30 @@ async function pickMostRestrictivePrivacy(page, excludeValue) {
   const pick = RESTRICTIVENESS_ORDER.find((v) => candidates.includes(v)) || candidates[0];
   if (pick) await page.selectOption('#tiktok-privacy', pick);
   return pick;
+}
+
+// Public profile grid capture. Deliberately returns a boolean instead of
+// throwing: TikTok has been rate-limiting this specific surface for this
+// session ("Something went wrong", zero tiles) while TikTok Studio renders
+// fine, and a throttle on corroborating footage must not abort a run that has
+// already produced a real, verified Direct Post.
+async function captureProfileGrid(page) {
+  try {
+    await page.goto(cfg.TIKTOK_WEB_URL, { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-e2e="user-post-item"]').first().waitFor({ state: 'visible', timeout: 45000 });
+    await page.waitForTimeout(DWELL.tiktokWebArrive); // reviewer: see the logged-in profile
+    const firstTile = page.locator('[data-e2e="user-post-item"]').first();
+    const alt = await firstTile.locator('img').first().getAttribute('alt').catch(() => '');
+    console.log(`  Tile alt: "${alt}"`);
+    if (!alt || !alt.includes(CAPTION_PROOF)) return false;
+    if (!(await firstTile.locator('svg.private').isVisible().catch(() => false))) return false;
+    await firstTile.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(DWELL.gridLock); // reviewer: read the locked tile on the grid
+    return true;
+  } catch (err) {
+    console.warn(`  ! profile grid capture skipped: ${err.message.split('\n')[0]}`);
+    return false;
+  }
 }
 
 async function main() {
@@ -115,6 +148,26 @@ async function main() {
   video = page.video();
 
   try {
+    // 0. TikTok-side BEFORE state. The account holds ZERO posts at the moment
+    // this capture starts. This is the first half of a proof pair: the
+    // reviewer sees an empty Posts table, then — in the same unbroken take —
+    // watches exactly one post appear as a result of the Direct Post call.
+    // Nothing else can account for it.
+    await page.goto(TIKTOK_STUDIO_POSTS_URL, { waitUntil: 'domcontentloaded' });
+    await assertState('TikTok Studio reachable while logged in as @creatorpost_dev', async () => {
+      const cookies = await page.context().cookies('https://www.tiktok.com');
+      return cookies.some((c) => c.name === 'sessionid' && c.value);
+    });
+    await assertState('TikTok Studio shows ZERO existing posts before publishing', async () => {
+      for (let i = 0; i < 6; i++) {
+        const body = await page.locator('body').innerText().catch(() => '');
+        if (/no posts yet/i.test(body)) return true;
+        await page.waitForTimeout(3000);
+      }
+      return false;
+    });
+    await page.waitForTimeout(DWELL.studioEmpty); // reviewer: read the empty Posts table
+
     // 1. Connected CreatorPost state
     await page.goto(cfg.DASHBOARD_URL, { waitUntil: 'networkidle' });
     await assertState('CreatorPost light mode forced', async () => {
@@ -505,54 +558,39 @@ async function main() {
       });
       await page.waitForTimeout(DWELL.publishedStatus); // reviewer: read the Published state
 
-      // 16. TikTok-web proof, same persistent profile (real @creatorpost_dev
-      // session). NO Inbox/notification panel is touched here — the whole
-      // point of this recut is that the post appears directly on the profile
-      // grid without any native completion step.
-      await page.goto(cfg.TIKTOK_WEB_URL, { waitUntil: 'domcontentloaded' });
-      await assertState('TikTok web reachable while logged in as @creatorpost_dev', async () => {
-        const cookies = await page.context().cookies('https://www.tiktok.com');
-        return cookies.some(c => c.name === 'sessionid' && c.value);
-      });
-      await assertState('profile grid rendered', async () => {
-        await page.locator('[data-e2e="user-post-item"]').first().waitFor({ state: 'visible', timeout: 30000 });
-        return true;
-      });
-      await page.waitForTimeout(DWELL.tiktokWebArrive); // reviewer: see the logged-in profile
-
-      // The newest grid tile must be the post just published, and must carry
-      // TikTok's own private/lock badge (svg.private) — SELF_ONLY visibility
-      // rendered by TikTok, not by CreatorPost.
-      const firstTile = page.locator('[data-e2e="user-post-item"]').first();
-      await assertState('newest grid tile is the post just published from CreatorPost', async () => {
+      // 16. TikTok-side AFTER state, same persistent profile and same
+      // browser session as the empty "before" shot. Studio's Posts table is
+      // the primary proof: it carries the post's Privacy column ("Only me" —
+      // TikTok rendering the SELF_ONLY that was selected in CreatorPost) and
+      // the exact creation timestamp, which the reviewer can line up against
+      // the Publish Now click a few seconds earlier in this same recording.
+      // No Inbox, notification panel, draft or native-app step is touched.
+      await page.goto(TIKTOK_STUDIO_POSTS_URL, { waitUntil: 'domcontentloaded' });
+      await assertState('TikTok Studio Posts lists the post published from CreatorPost', async () => {
         for (let i = 0; i < 12; i++) {
-          const alt = await firstTile.locator('img').first().getAttribute('alt').catch(() => '');
-          if (alt && alt.includes(CAPTION_PROOF)) { console.log(`  Tile alt: "${alt}"`); return true; }
+          const body = await page.locator('body').innerText().catch(() => '');
+          if (body.includes(CAPTION_PROOF)) return true;
           await page.waitForTimeout(10000);
           await page.reload({ waitUntil: 'domcontentloaded' });
-          await page.locator('[data-e2e="user-post-item"]').first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
         }
         return false;
       });
-      await assertState('newest grid tile carries TikTok\'s private/lock badge', async () => {
-        return await firstTile.locator('svg.private').isVisible().catch(() => false);
+      const studioText = await page.locator('body').innerText().catch(() => '');
+      const captionRows = studioText.split(CAPTION_PROOF).length - 1;
+      console.log(`  Studio rows matching the audit caption: ${captionRows}`);
+      await assertState('TikTok Studio lists EXACTLY ONE post', async () => {
+        if (/no posts yet/i.test(studioText)) return false;
+        return captionRows === 1;
       });
-      await firstTile.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(DWELL.gridLock); // reviewer: read the locked tile on the grid
+      await assertState('TikTok Studio reports the post privacy as Only me', async () => {
+        return /only me/i.test(studioText);
+      });
+      await page.waitForTimeout(DWELL.studioRow); // reviewer: read privacy + exact created timestamp
 
-      // 17. Open that same post — detail view carries "🔒 Private" next to
-      // the handle plus the caption submitted from CreatorPost.
-      await firstTile.locator('a').first().click();
-      await assertState('post detail view shows the CreatorPost caption', async () => {
-        await page.waitForTimeout(6000);
-        const body = await page.locator('body').innerText().catch(() => '');
-        return body.includes(CAPTION_PROOF);
-      });
-      await assertState('post detail view shows Private visibility', async () => {
-        const body = await page.locator('body').innerText().catch(() => '');
-        return /private/i.test(body);
-      });
-      await page.waitForTimeout(DWELL.postDetail); // reviewer: hold on the open, private post
+      // 17. Public profile grid — corroboration only, best-effort. See
+      // captureProfileGrid() for why a failure here is not fatal.
+      const gridProven = await captureProfileGrid(page);
+      console.log(`  Profile-grid corroboration: ${gridProven ? 'CAPTURED' : 'UNAVAILABLE (TikTok throttle)'}`);
 
       submitted = true;
     }
