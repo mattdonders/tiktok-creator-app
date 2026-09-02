@@ -229,6 +229,13 @@
     }
     .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
     .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+    /* Interactions the creator has turned off in their own TikTok account
+       settings come back *_disabled from creator_info. TikTok requires them
+       to read as unavailable — not as an ordinary "off" switch the creator
+       could still flip — so grey the control and the row label out. */
+    .toggle-switch input:disabled + .toggle-slider { opacity: 0.4; cursor: not-allowed; }
+    .tt-toggle-row.tt-toggle-unavailable > span:first-child { opacity: 0.6; }
+    .tt-toggle-note { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.4; }
 
     .schedule-fields { display: none; padding: 0 !important; }
     .schedule-fields.visible { display: block; padding: 0 1rem 1rem !important; }
@@ -1148,12 +1155,9 @@
         opts.map(o => `<option value="${escHtml(o)}">${escHtml(PRIVACY_LABELS[o] ?? o)}</option>`).join('');
 
       // Interaction constraints from creator_info
-      commentEl.disabled = !!info.comment_disabled;
-      duetEl.disabled    = !!info.duet_disabled;
-      stitchEl.disabled  = !!info.stitch_disabled;
-      if (info.comment_disabled) commentEl.checked = false;
-      if (info.duet_disabled)    duetEl.checked    = false;
-      if (info.stitch_disabled)  stitchEl.checked  = false;
+      setInteractionAvailability(commentEl, !!info.comment_disabled);
+      setInteractionAvailability(duetEl,    !!info.duet_disabled);
+      setInteractionAvailability(stitchEl,  !!info.stitch_disabled);
 
       // Duration hint
       hintEl.textContent = info.max_video_post_duration_sec
@@ -1161,6 +1165,32 @@
         : '';
 
       updateBrandedContentAvailability();
+    }
+
+    // An interaction the creator has turned off in their own TikTok account
+    // settings (creator_info's comment_disabled/duet_disabled/stitch_disabled)
+    // must render as unavailable with a reason, not as a normal "off" toggle —
+    // otherwise the control looks flippable and silently does nothing.
+    function setInteractionAvailability(input, unavailable) {
+      input.disabled = unavailable;
+      if (unavailable) input.checked = false;
+
+      const row = input.closest('.tt-toggle-row');
+      if (!row) return;
+      row.classList.toggle('tt-toggle-unavailable', unavailable);
+
+      const label = row.querySelector('span');
+      let note = row.querySelector('.tt-toggle-note');
+      if (unavailable) {
+        if (!note && label) {
+          note = document.createElement('span');
+          note.className = 'tt-toggle-note';
+          label.appendChild(note);
+        }
+        if (note) note.textContent = 'Turned off in your TikTok account settings';
+      } else if (note) {
+        note.remove();
+      }
     }
 
     // Branded content can't be posted as SELF_ONLY (TikTok requires paid
@@ -1181,7 +1211,13 @@
       if (!privacyEl || !brandContentEl) return;
       const isSelfOnly = privacyEl.value === 'SELF_ONLY';
       brandContentEl.disabled = isSelfOnly;
-      if (restrictionNote) restrictionNote.style.display = isSelfOnly ? 'block' : 'none';
+      // The restriction note explains why "Branded content" is unavailable, so
+      // it belongs to the disclosure flow — show it only while commercial
+      // disclosure is actually ON. With disclosure OFF the branded-content
+      // choice isn't on screen at all, and a standing red warning under a
+      // perfectly valid Only Me selection reads as an error state that isn't one.
+      const disclosureOn = document.getElementById('tiktok-disclosure-toggle')?.checked ?? false;
+      if (restrictionNote) restrictionNote.style.display = (isSelfOnly && disclosureOn) ? 'block' : 'none';
       if (isSelfOnly && brandContentEl.checked) {
         brandContentEl.checked = false;
         onDisclosureOptChange();
@@ -1231,11 +1267,10 @@
       document.getElementById('disclosure-opts').style.display = el.checked ? 'flex' : 'none';
       document.getElementById('disclosure-label').style.display = 'none';
       document.getElementById('disclosure-validation').style.display = disclosureNeedsBrandChoice() ? 'block' : 'none';
-      if (!el.checked) {
-        updateConsentText(false);
-        const restrictionNote = document.getElementById('tiktok-privacy-restriction-note');
-        if (restrictionNote) restrictionNote.style.display = 'none';
-      }
+      if (!el.checked) updateConsentText(false);
+      // Single owner of the restriction note's visibility — it shows only while
+      // disclosure is ON and privacy is Only Me, and hides again on toggle-off.
+      updateBrandedContentAvailability();
       updateSubmitBtn();
     }
 
