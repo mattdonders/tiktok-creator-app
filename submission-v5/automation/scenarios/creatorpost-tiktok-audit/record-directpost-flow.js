@@ -166,7 +166,8 @@ async function main() {
       const cookies = await page.context().cookies('https://www.tiktok.com');
       return cookies.some((c) => c.name === 'sessionid' && c.value);
     });
-    await assertState('TikTok Studio shows ZERO existing posts before publishing', async () => {
+    if (DRY_RUN) console.log('  - dry run: skipping the TikTok zero-post gate (the real post exists by design)');
+    else await assertState('TikTok Studio shows ZERO existing posts before publishing', async () => {
       for (let i = 0; i < 6; i++) {
         const body = await page.locator('body').innerText().catch(() => '');
         if (/no posts yet/i.test(body)) return true;
@@ -190,7 +191,8 @@ async function main() {
     // The v8 capture recorded a dashboard still carrying older test rows,
     // which weakened the "exactly one post" claim even though TikTok's side
     // was clean. Abort rather than record a dirty dashboard.
-    await assertState('CreatorPost shows ZERO existing posts before publishing', async () => {
+    if (DRY_RUN) console.log('  - dry run: skipping the CreatorPost zero-post gate (the real post exists by design)');
+    else await assertState('CreatorPost shows ZERO existing posts before publishing', async () => {
       for (let i = 0; i < 6; i++) {
         const total = (await page.locator('#stat-total').innerText().catch(() => '')).trim();
         const rows = await page.locator('.post-item').count().catch(() => -1);
@@ -277,8 +279,19 @@ async function main() {
 
     // Item 3: no privacy level preselected; options come from TikTok's live
     // privacy_level_options (never hardcoded — see dashboard.html:1146).
+    // The blank privacy state is the single most important compliance beat in
+    // this capture, and asserting it is not enough — the reviewer has to SEE
+    // it. Until now the page was still scrolled to the composer while the
+    // blank dwell ran, so #tiktok-privacy sat below the fold and the control
+    // only entered frame after it had already been set. Scroll it into view
+    // first so the recording shows blank -> Only Me as a visible transition.
+    await page.locator('#tiktok-privacy').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600); // let the smooth scroll settle before the dwell
     await assertState('no privacy level preselected', async () => {
       return (await page.locator('#tiktok-privacy').inputValue()) === '';
+    });
+    await assertState('blank privacy control is actually visible on screen', async () => {
+      return await page.locator('#tiktok-privacy').isVisible();
     });
     await page.waitForTimeout(DWELL.privacyBlankState); // reviewer: dwell on the initial blank privacy state before it's touched
     await assertState('privacy options loaded live from creator_info', async () => {
