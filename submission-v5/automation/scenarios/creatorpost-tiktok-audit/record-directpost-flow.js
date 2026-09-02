@@ -75,6 +75,7 @@ const DWELL = {
   gridLock: 6000,
   postDetail: 10000,
   studioEmpty: 9000,
+  emptyDashboard: 6000,
   studioRow: 14000,
 };
 
@@ -142,6 +143,13 @@ async function main() {
   // localStorage rather than touching product code.
   await context.addInitScript(() => {
     try { localStorage.setItem('creatorpost-theme', 'light'); } catch (e) {}
+    // Evict CreatorPost's stale client-side post cache before dashboard.html
+    // reads it. loadPosts() merges the server response with localStorage
+    // `cp_posts` and KEEPS local rows the server no longer returns, so posts
+    // deleted server-side are resurrected in the browser forever. D1 is the
+    // truth (0 posts for this account); this drops the profile's stale copy so
+    // the capture shows the real state. No-op on non-CreatorPost origins.
+    try { localStorage.removeItem('cp_posts'); } catch (e) {}
   });
 
   const page = context.pages()[0] ?? await context.newPage();
@@ -178,6 +186,22 @@ async function main() {
       const text = await page.locator('#nav-account a[href="/account"]').innerText();
       return text.trim() === cfg.EXPECTED_CREATORPOST_EMAIL;
     });
+    // CreatorPost's OWN post history must also be empty before publishing.
+    // The v8 capture recorded a dashboard still carrying older test rows,
+    // which weakened the "exactly one post" claim even though TikTok's side
+    // was clean. Abort rather than record a dirty dashboard.
+    await assertState('CreatorPost shows ZERO existing posts before publishing', async () => {
+      for (let i = 0; i < 6; i++) {
+        const total = (await page.locator('#stat-total').innerText().catch(() => '')).trim();
+        const rows = await page.locator('.post-item').count().catch(() => -1);
+        if (total === '0' && rows === 0) return true;
+        if (i === 5) console.error(`  ✗ dashboard not empty: Total Posts="${total}", Recent Posts rows=${rows}`);
+        await page.waitForTimeout(2000);
+      }
+      return false;
+    });
+    await page.waitForTimeout(DWELL.emptyDashboard); // reviewer: read Total Posts 0 / no Recent Posts
+
     await assertState('at least one TikTok account connected', async () => {
       const label = await page.locator('#accounts-bar-label').innerText();
       return /tiktok/i.test(label) && !/no accounts connected/i.test(label);
